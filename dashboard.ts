@@ -18,6 +18,34 @@ const knownHealthKeys = new Set([
   "activeCalories","active_calories","bodyFatPct","fatMassKg","muscleMassKg","boneMassKg","hydrationKg"
 ]);
 
+
+function activityFtpFromRaw(activity: { raw?: Record<string, unknown> }): number | null {
+  const raw = activity.raw;
+  if (!raw) return null;
+
+  const keys = ["ftp", "icu_ftp", "athlete_ftp", "cycling_ftp", "bike_ftp", "power_ftp"];
+
+  for (const key of keys) {
+    const value = raw[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  }
+
+  for (const nestedKey of ["cycling", "ride", "bike", "sportSettings", "sport_settings", "settings"]) {
+    const nested = raw[nestedKey];
+    if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+
+    const obj = nested as Record<string, unknown>;
+    for (const key of keys) {
+      const value = obj[key];
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+    }
+  }
+
+  return null;
+}
+
 function localDateInTimezone(timezone = process.env.DASHBOARD_TIMEZONE || "Europe/Copenhagen") {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
@@ -177,13 +205,14 @@ export async function buildDashboard(days = 90): Promise<DashboardData> {
   const strength28 = a28.filter(a => /weight|strength|workout|highintensity/i.test(a.sport));
 
   const latestRideWithFtp = [...activities]
-    .filter(a => /ride|cycling|bike|virtualride/i.test(a.sport) && typeof a.ftp === "number" && Number.isFinite(a.ftp))
+    .filter(a => /ride|cycling|bike|virtualride/i.test(a.sport) && activityFtpFromRaw(a) !== null)
     .sort((a, b) => b.date.localeCompare(a.date))
     .at(0);
 
+  const latestRideFtp = latestRideWithFtp ? activityFtpFromRaw(latestRideWithFtp) : null;
   const stasFtpRaw = stasBundle.data?.athlete?.cyclingFtpW;
   const stasFtp = typeof stasFtpRaw === "number" && Number.isFinite(stasFtpRaw) ? stasFtpRaw : null;
-  const currentFtp = athlete.ftp ?? latestRideWithFtp?.ftp ?? stasFtp;
+  const currentFtp = athlete.ftp ?? latestRideFtp ?? stasFtp;
 
   return {
     generatedAt: new Date().toISOString(),

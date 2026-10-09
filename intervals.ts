@@ -108,7 +108,6 @@ function mapActivity(row: Record<string, unknown>): Activity {
     fitness,
     fatigue,
     form,
-    ftp: findFtp(row),
     raw: row
   };
 }

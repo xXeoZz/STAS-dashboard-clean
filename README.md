@@ -101,3 +101,12 @@ For the cleanest recovery from the earlier repository file mix-ups:
 5. Import or reconnect that repository in Vercel.
 6. Re-add the Vercel environment variables.
 7. Deploy.
+
+
+## v8.1 FTP compile fix
+
+The dashboard no longer depends on an `ftp` property existing on the `Activity` TypeScript type.
+For activity-level FTP fallback it reads the FTP value from the raw Intervals activity payload instead.
+
+This specifically avoids the Vercel build error:
+`Property 'ftp' does not exist on type 'Activity'.`

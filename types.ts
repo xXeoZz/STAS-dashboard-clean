@@ -42,7 +42,6 @@ export type Activity = {
   fitness?: number | null;
   fatigue?: number | null;
   form?: number | null;
-  ftp?: number | null;
   raw?: Record<string, unknown>;
 };
 
