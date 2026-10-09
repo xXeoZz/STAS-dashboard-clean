@@ -1,0 +1,36 @@
+{
+  "snapshotDate": "2026-10-09",
+  "athlete": {
+    "name": "Nikolaj Andersen",
+    "birthYear": 1990,
+    "gender": "male",
+    "heightCm": 182,
+    "weightKg": 90,
+    "maxHr": 185,
+    "historicalLthr": 163,
+    "cyclingFtpW": 266,
+    "timezone": "Europe/Copenhagen"
+  },
+  "goals": [
+    {
+      "title": "Vätternrundan 2027",
+      "date": "2027-06-18",
+      "distanceKm": 315,
+      "priority": "A",
+      "direction": "Finish strongly; performance ambition about 28 km/h average and ~180 W average, recognizing wind, drafting and group dynamics."
+    },
+    {
+      "title": "Lose approximately 10 kg before Vätternrundan",
+      "date": "2027-06-12",
+      "direction": "Use weekly weight trend and preserve cycling power, strength and recovery."
+    }
+  ],
+  "rules": [
+    "Use an adaptive daily coaching model instead of fixed cycling/strength weekdays.",
+    "Prioritize one long-endurance cycling session every week whenever practical.",
+    "Do not create missed-session debt when family/life changes the week.",
+    "Indoor fan is non-negotiable for Zwift quality work.",
+    "Treat indoor and outdoor power as different measurement systems."
+  ],
+  "strategy": "Current phase: post-Møn off-season strength-and-power development.\n\nPrimary direction:\n- Become a materially stronger cyclist by increasing sustainable power.\n- Improve aerobic efficiency at useful endurance/tempo outputs.\n- Improve durability so useful power can be maintained late in long rides.\n- Preserve endurance while strength and power develop.\n- Do not make preparation FTP-only.\n- Gradually increase total saddle time toward Vätternrundan-specific durability."
+}
