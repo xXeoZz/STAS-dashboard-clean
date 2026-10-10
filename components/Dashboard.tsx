@@ -1,11 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import Sparkline from "@/components/Sparkline";
 import type { Activity, DashboardData, PlannedEvent, WellnessDay } from "@/lib/types";
+import {
+  buildRecoverySeries,
+  coverageLabel,
+  loadBalance,
+  recoveryLabel,
+  recoveryTrend,
+  sleepConsistency,
+  weightTrendKg,
+  type RecoveryPoint
+} from "@/lib/health-intelligence";
 
 type Tab = "Today" | "Health" | "Training" | "Cycling" | "Plan";
 type WorkoutKind = "rest" | "hiit" | "strength" | "cycling" | "running" | "other";
+type HealthMetric = "hrv" | "rhr" | "sleep" | "weight";
+type CyclingMetric = "efficiency" | "decoupling" | "avgPower" | "np";
 
 const tabs: Array<{ key: Tab; label: string; icon: string }> = [
   { key: "Today", label: "Today", icon: "◉" },
@@ -24,8 +36,8 @@ const kindMeta: Record<WorkoutKind, { label: string; className: string }> = {
   other: { label: "Other", className: "kindOther" }
 };
 
-const fmt = (v: number | null | undefined, digits = 0) =>
-  typeof v === "number" && Number.isFinite(v) ? v.toFixed(digits) : "—";
+const fmt = (v: number | null | undefined, d = 0) =>
+  typeof v === "number" && Number.isFinite(v) ? v.toFixed(d) : "—";
 
 const dateOnly = (s: string) => (s ? s.slice(0, 10) : "—");
 
@@ -39,10 +51,6 @@ function duration(sec?: number | null) {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   return `${h ? `${h}h ` : ""}${m}m`;
-}
-
-function hours(sec?: number | null) {
-  return typeof sec === "number" ? sec / 3600 : 0;
 }
 
 function distance(m?: number | null) {
@@ -79,127 +87,78 @@ function average(values: Array<number | null | undefined>) {
   return clean.length ? clean.reduce((a, b) => a + b, 0) / clean.length : null;
 }
 
-function Donut({ score, label = "recovery" }: { score: number | null; label?: string }) {
+function ScoreOrb({ score }: { score: number | null }) {
   const style = { "--score": `${score == null ? 0 : clamp(score)}%` } as CSSProperties;
   return (
-    <div className="donut" style={style}>
-      <div className="donutCore">
-        <b>{score ?? "—"}</b>
-        <span>{label}</span>
-      </div>
-    </div>
-  );
-}
-
-function Metric({
-  icon,
-  label,
-  value,
-  sub,
-  tone
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  sub?: string;
-  tone?: WorkoutKind | "health";
-}) {
-  return (
-    <div className={`metric ${tone ? `metric-${tone}` : ""}`}>
-      <span className="metricIcon">{icon}</span>
+    <div className="scoreOrb" style={style}>
       <div>
-        <small>{label}</small>
-        <b>{value}</b>
-        {sub && <em>{sub}</em>}
+        <b>{score ?? "—"}</b>
+        <span>recovery</span>
       </div>
     </div>
   );
 }
 
-function TrendChip({
-  current,
-  reference,
+function Delta({
+  value,
   unit = "",
   reverse = false
 }: {
-  current?: number | null;
-  reference?: number | null;
+  value: number | null;
   unit?: string;
   reverse?: boolean;
 }) {
-  if (typeof current !== "number" || typeof reference !== "number") return <span className="trendChip neutral">No baseline</span>;
-  const delta = current - reference;
-  const improved = reverse ? delta < 0 : delta > 0;
-  const near = Math.abs(delta) < Math.max(0.5, Math.abs(reference) * 0.015);
+  if (value === null || !Number.isFinite(value)) return <span className="delta neutral">No baseline</span>;
+  const near = Math.abs(value) < 0.5;
+  const positive = reverse ? value < 0 : value > 0;
   return (
-    <span className={`trendChip ${near ? "neutral" : improved ? "up" : "down"}`}>
-      {near ? "≈" : delta > 0 ? "↑" : "↓"} {Math.abs(delta).toFixed(Math.abs(delta) >= 10 ? 0 : 1)}{unit}
+    <span className={`delta ${near ? "neutral" : positive ? "positive" : "negative"}`}>
+      {near ? "≈" : value > 0 ? "↑" : "↓"} {Math.abs(value).toFixed(Math.abs(value) >= 10 ? 0 : 1)}{unit}
     </span>
   );
 }
 
-function RecoveryHistory({
+function SectionHeading({
+  eyebrow,
+  title,
+  action
+}: {
+  eyebrow: string;
+  title: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="sectionHeading">
+      <div>
+        <small>{eyebrow}</small>
+        <h2>{title}</h2>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function RecoveryHero({
   data,
+  series,
   selectedDate,
   setSelectedDate
 }: {
   data: DashboardData;
+  series: RecoveryPoint[];
   selectedDate: string | null;
   setSelectedDate: (d: string) => void;
 }) {
-  const recoveryDates = data.wellness
-    .filter(w => w.date && (
-      typeof w.hrv === "number" ||
-      typeof w.restingHr === "number" ||
-      typeof w.sleepHours === "number" ||
-      typeof w.sleepScore === "number"
-    ))
-    .map(w => w.date)
-    .sort();
-
+  const available = series.filter(x => x.score !== null).map(x => x.date);
   const effectiveDate =
-    selectedDate && recoveryDates.includes(selectedDate)
+    selectedDate && available.includes(selectedDate)
       ? selectedDate
-      : recoveryDates.at(-1) || null;
+      : available.at(-1) || null;
 
-  const wellness = effectiveDate
-    ? data.wellness.find(w => w.date === effectiveDate) || null
-    : null;
-
-  const idx = effectiveDate ? recoveryDates.indexOf(effectiveDate) : -1;
-
-  const trailingRows = effectiveDate
-    ? data.wellness.filter(w => {
-        const end = new Date(`${effectiveDate}T12:00:00`);
-        const start = new Date(end);
-        start.setDate(start.getDate() - 6);
-        const d = new Date(`${w.date}T12:00:00`);
-        return d >= start && d <= end;
-      })
-    : [];
-
-  const hrv7 = average(trailingRows.map(w => w.hrv));
-  const rhr7 = average(trailingRows.map(w => w.restingHr));
-
-  const sleepScore =
-    wellness && typeof wellness.sleepScore === "number"
-      ? Math.round(clamp(wellness.sleepScore))
-      : wellness && typeof wellness.sleepHours === "number"
-        ? Math.round(clamp((wellness.sleepHours / 8) * 85, 45, 100))
-        : null;
-
-  const hrvScore =
-    wellness && typeof wellness.hrv === "number" && typeof hrv7 === "number" && hrv7 > 0
-      ? Math.round(clamp((wellness.hrv / hrv7) * 85, 45, 100))
-      : null;
-
-  const rhrScore =
-    wellness && typeof wellness.restingHr === "number" && typeof rhr7 === "number" && wellness.restingHr > 0
-      ? Math.round(clamp((rhr7 / wellness.restingHr) * 85, 45, 100))
-      : null;
-
-  const bits = [sleepScore, hrvScore, rhrScore].filter((x): x is number => x !== null);
-  const score = bits.length ? Math.round(bits.reduce((a, b) => a + b, 0) / bits.length) : null;
+  const idx = effectiveDate ? available.indexOf(effectiveDate) : -1;
+  const point = effectiveDate ? series.find(x => x.date === effectiveDate) || null : null;
+  const wellness = effectiveDate ? data.wellness.find(x => x.date === effectiveDate) || null : null;
+  const trend = recoveryTrend(series, effectiveDate);
 
   const label = effectiveDate
     ? new Date(`${effectiveDate}T12:00:00`).toLocaleDateString(undefined, {
@@ -209,31 +168,42 @@ function RecoveryHistory({
       })
     : "No data";
 
+  const hrvDelta =
+    typeof wellness?.hrv === "number" && typeof point?.hrvBaseline === "number"
+      ? wellness.hrv - point.hrvBaseline
+      : null;
+
+  const rhrDelta =
+    typeof wellness?.restingHr === "number" && typeof point?.rhrBaseline === "number"
+      ? wellness.restingHr - point.rhrBaseline
+      : null;
+
   return (
-    <section className="heroCard">
-      <div className="recoveryTop">
+    <section className="heroPanel">
+      <div className="heroTop">
         <div>
-          <small>DAILY RECOVERY</small>
+          <span className="kicker">How am I?</span>
           <b>{label}</b>
         </div>
-        <div className="dateNav">
+
+        <div className="dateStepper">
           <button
-            onClick={() => idx > 0 && setSelectedDate(recoveryDates[idx - 1])}
+            onClick={() => idx > 0 && setSelectedDate(available[idx - 1])}
             disabled={idx <= 0}
             aria-label="Previous recovery day"
           >
             ‹
           </button>
           <button
-            className="todayButton"
-            onClick={() => recoveryDates.length && setSelectedDate(recoveryDates[recoveryDates.length - 1])}
-            disabled={idx === recoveryDates.length - 1}
+            className="latestBtn"
+            onClick={() => available.length && setSelectedDate(available[available.length - 1])}
+            disabled={idx === available.length - 1}
           >
             Latest
           </button>
           <button
-            onClick={() => idx >= 0 && idx < recoveryDates.length - 1 && setSelectedDate(recoveryDates[idx + 1])}
-            disabled={idx < 0 || idx >= recoveryDates.length - 1}
+            onClick={() => idx >= 0 && idx < available.length - 1 && setSelectedDate(available[idx + 1])}
+            disabled={idx < 0 || idx >= available.length - 1}
             aria-label="Next recovery day"
           >
             ›
@@ -241,136 +211,162 @@ function RecoveryHistory({
         </div>
       </div>
 
-      <Donut score={score} />
+      <div className="heroBody">
+        <ScoreOrb score={point?.score ?? null} />
 
-      <h2>
-        {score != null && score >= 80
-          ? "Strong recovery signals"
-          : score != null && score >= 65
-            ? "Moderate recovery signals"
-            : "Recovery signals are subdued"}
-      </h2>
-      <p>Sleep, HRV and resting heart rate for this date, compared with its own trailing 7-day context.</p>
+        <div className="heroCopy">
+          <span className="eyebrow">DAILY RECOVERY</span>
+          <h1>{recoveryLabel(point?.score ?? null, point?.coverage ?? 0)}</h1>
+          <p>
+            A simple presentation score from the recovery data you already own.
+            It is context for training decisions, not a medical or automatic readiness verdict.
+          </p>
 
-      <div className="signals">
+          <div className="heroTrend">
+            <Delta value={trend} />
+            <span>vs previous recovery days</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="signalStrip">
         <div>
-          <span>♥ HRV</span>
-          <b>{fmt(wellness?.hrv)} ms</b>
-          <TrendChip current={wellness?.hrv} reference={hrv7} unit=" ms" />
+          <span>HRV</span>
+          <b>{fmt(wellness?.hrv)} <em>ms</em></b>
+          <Delta value={hrvDelta} unit=" ms" />
         </div>
         <div>
-          <span>● RHR</span>
-          <b>{fmt(wellness?.restingHr)} bpm</b>
-          <TrendChip current={wellness?.restingHr} reference={rhr7} unit=" bpm" reverse />
+          <span>Resting HR</span>
+          <b>{fmt(wellness?.restingHr)} <em>bpm</em></b>
+          <Delta value={rhrDelta} unit=" bpm" reverse />
         </div>
         <div>
-          <span>☾ Sleep</span>
-          <b>{fmt(wellness?.sleepHours, 1)} h</b>
-          <small>score {fmt(wellness?.sleepScore)}</small>
+          <span>Sleep</span>
+          <b>{fmt(wellness?.sleepHours, 1)} <em>h</em></b>
+          <span className="delta neutral">score {fmt(wellness?.sleepScore)}</span>
         </div>
+      </div>
+
+      <div className="coverageLine">
+        <span>{coverageLabel(point?.coverage ?? 0)}</span>
+        <i />
       </div>
     </section>
   );
 }
 
-function TodayWorkout({ planned }: { planned: PlannedEvent[] }) {
+function TodayAction({ planned }: { planned: PlannedEvent[] }) {
   const today = localIso();
   const todayEvents = planned.filter(p => dateOnly(p.start) === today);
 
-  return (
-    <section className="card todayWorkoutCard">
-      <div className="title">
+  if (!todayEvents.length) {
+    return (
+      <section className="actionCard">
         <div>
-          <small>TODAY</small>
-          <h3>{todayEvents.length ? "Planned training" : "No workout scheduled"}</h3>
+          <span className="kicker">What next?</span>
+          <h2>No planned session</h2>
+          <p>No workout is returned for today. That is not automatically a rest prescription.</p>
         </div>
-        <span className={`statusPill ${todayEvents.length ? "plannedStatus" : "restStatus"}`}>
-          {todayEvents.length ? "Planned" : "Open"}
-        </span>
-      </div>
+        <span className="actionBadge neutralBadge">Open day</span>
+      </section>
+    );
+  }
 
-      {todayEvents.length ? (
-        <div className="todayWorkoutList">
-          {todayEvents.map(p => {
-            const kind = eventKind(p);
-            return (
-              <div className="todayWorkout" key={p.id + p.start}>
-                <span className={`workoutOrb ${kindMeta[kind].className}`} />
-                <div>
-                  <b>{p.name}</b>
-                  <span>{p.type || p.category || kindMeta[kind].label} · {duration(p.movingTimeSec)}</span>
-                  {p.description && <small>{p.description.split("\n")[0]}</small>}
-                </div>
-                <em>{fmt(p.load)}<small>load</small></em>
-              </div>
-            );
-          })}
+  const main = todayEvents[0];
+  const kind = eventKind(main);
+
+  return (
+    <section className="actionCard">
+      <div>
+        <span className="kicker">What next?</span>
+        <div className="actionTitle">
+          <i className={`workoutDot ${kindMeta[kind].className}`} />
+          <h2>{main.name}</h2>
         </div>
-      ) : (
-        <p className="softCopy">No planned session is returned for today. That is not automatically a rest prescription.</p>
-      )}
+        <p>
+          {main.type || kindMeta[kind].label}
+          {main.movingTimeSec ? ` · ${duration(main.movingTimeSec)}` : ""}
+          {typeof main.load === "number" ? ` · load ${Math.round(main.load)}` : ""}
+        </p>
+        {main.description && <small>{main.description.split("\n")[0]}</small>}
+      </div>
+      <span className="actionBadge">Planned</span>
     </section>
   );
 }
 
-function MonthlyTrainingCalendar({
-  activities,
-  planned,
-  monthOffset,
-  onMonthOffset
-}: {
-  activities: Activity[];
-  planned: PlannedEvent[];
-  monthOffset: number;
-  onMonthOffset: (next: number) => void;
-}) {
+function WeekSnapshot({ data }: { data: DashboardData }) {
+  const balance = loadBalance(data.aggregates.load7d, data.aggregates.load28d);
+  const pct = balance.ratio === null ? 0 : clamp(balance.ratio * 100, 0, 160);
+
+  const activities = data.activities.filter(a => {
+    const d = new Date(a.date);
+    const now = new Date();
+    const monday = new Date(now);
+    const weekday = monday.getDay();
+    monday.setDate(monday.getDate() + (weekday === 0 ? -6 : 1 - weekday));
+    monday.setHours(0, 0, 0, 0);
+    return d >= monday;
+  });
+
+  const seconds = activities.reduce((sum, a) => sum + (a.movingTimeSec || 0), 0);
+  const rides = activities.filter(a => workoutKind(a.sport, a.name) === "cycling").length;
+
+  return (
+    <section className="card compactCard">
+      <SectionHeading
+        eyebrow="THIS WEEK"
+        title="Training in one glance"
+        action={<span className="subtleTag">{balance.label}</span>}
+      />
+
+      <div className="weekNumbers">
+        <div><b>{(seconds / 3600).toFixed(1)}h</b><span>time</span></div>
+        <div><b>{Math.round(data.aggregates.load7d)}</b><span>load</span></div>
+        <div><b>{activities.length}</b><span>sessions</span></div>
+        <div><b>{rides}</b><span>rides</span></div>
+      </div>
+
+      <div className="balanceRow">
+        <div>
+          <span>7d load vs recent weekly average</span>
+          <b>{balance.ratio === null ? "—" : `${Math.round(balance.ratio * 100)}%`}</b>
+        </div>
+        <div className="balanceTrack">
+          <i style={{ width: `${Math.min(100, pct)}%` }} />
+          <span className="balanceMarker" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function buildMonthData(activities: Activity[], planned: PlannedEvent[], monthOffset: number) {
   const now = new Date();
   const monthDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
-  const monthLabel = monthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-
   const firstDay = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const mondayOffset = (firstDay.getDay() + 6) % 7;
-  const today = localIso();
 
-  const activityByDate = new Map<string, Activity[]>();
-  for (const a of activities) {
-    const iso = dateOnly(a.date);
-    const d = new Date(`${iso}T12:00:00`);
-    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
-    activityByDate.set(iso, [...(activityByDate.get(iso) || []), a]);
-  }
-
-  const planByDate = new Map<string, PlannedEvent[]>();
-  for (const p of planned) {
-    const iso = dateOnly(p.start);
-    const d = new Date(`${iso}T12:00:00`);
-    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
-    planByDate.set(iso, [...(planByDate.get(iso) || []), p]);
-  }
-
-  const summary: Record<WorkoutKind, number> = {
-    rest: 0, hiit: 0, strength: 0, cycling: 0, running: 0, other: 0
-  };
-  let totalSeconds = 0;
-  let totalLoad = 0;
+  const activityMap = new Map<string, Activity[]>();
+  const planMap = new Map<string, PlannedEvent[]>();
 
   for (const a of activities) {
     const iso = dateOnly(a.date);
     const d = new Date(`${iso}T12:00:00`);
-    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
-    summary[workoutKind(a.sport, a.name)] += 1;
-    totalSeconds += a.movingTimeSec || 0;
-    totalLoad += a.load || 0;
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      activityMap.set(iso, [...(activityMap.get(iso) || []), a]);
+    }
   }
 
   for (const p of planned) {
     const iso = dateOnly(p.start);
     const d = new Date(`${iso}T12:00:00`);
-    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
-    if (eventKind(p) === "rest") summary.rest += 1;
+    if (d.getFullYear() === year && d.getMonth() === month) {
+      planMap.set(iso, [...(planMap.get(iso) || []), p]);
+    }
   }
 
   const cells: Array<{
@@ -382,92 +378,107 @@ function MonthlyTrainingCalendar({
     explicitRest?: boolean;
   }> = [];
 
-  for (let i = 0; i < mondayOffset; i++) cells.push({ key: `blank-start-${i}` });
+  for (let i = 0; i < mondayOffset; i++) cells.push({ key: `start-${i}` });
 
   for (let day = 1; day <= daysInMonth; day++) {
     const iso = localIso(new Date(year, month, day, 12));
-    const actual = activityByDate.get(iso) || [];
-    const plan = planByDate.get(iso) || [];
+    const actual = activityMap.get(iso) || [];
+    const plans = planMap.get(iso) || [];
     const actualKinds = [...new Set(actual.map(a => workoutKind(a.sport, a.name)))];
-    const planKinds = [...new Set(plan.map(eventKind))];
+    const planKinds = [...new Set(plans.map(eventKind))];
     const explicitRest = planKinds.includes("rest");
-    const kinds = actualKinds.length ? actualKinds : planKinds.filter(k => k !== "rest");
 
     cells.push({
       key: iso,
       day,
       iso,
-      kinds,
-      plannedOnly: actual.length === 0 && plan.some(p => eventKind(p) !== "rest"),
+      kinds: actualKinds.length ? actualKinds : planKinds.filter(k => k !== "rest"),
+      plannedOnly: actual.length === 0 && planKinds.some(k => k !== "rest"),
       explicitRest
     });
   }
 
-  while (cells.length % 7 !== 0) cells.push({ key: `blank-end-${cells.length}` });
+  while (cells.length % 7 !== 0) cells.push({ key: `end-${cells.length}` });
+
+  const monthActivities = activities.filter(a => {
+    const d = new Date(`${dateOnly(a.date)}T12:00:00`);
+    return d.getFullYear() === year && d.getMonth() === month;
+  });
+
+  const counts: Record<WorkoutKind, number> = {
+    rest: 0, hiit: 0, strength: 0, cycling: 0, running: 0, other: 0
+  };
+  monthActivities.forEach(a => counts[workoutKind(a.sport, a.name)]++);
+  planned
+    .filter(p => {
+      const d = new Date(`${dateOnly(p.start)}T12:00:00`);
+      return d.getFullYear() === year && d.getMonth() === month && eventKind(p) === "rest";
+    })
+    .forEach(() => counts.rest++);
+
+  return {
+    monthLabel: monthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+    cells,
+    counts,
+    timeSec: monthActivities.reduce((sum, a) => sum + (a.movingTimeSec || 0), 0),
+    load: monthActivities.reduce((sum, a) => sum + (a.load || 0), 0)
+  };
+}
+
+function MonthCard({
+  activities,
+  planned,
+  monthOffset,
+  setMonthOffset,
+  compact = false
+}: {
+  activities: Activity[];
+  planned: PlannedEvent[];
+  monthOffset: number;
+  setMonthOffset: (n: number) => void;
+  compact?: boolean;
+}) {
+  const month = buildMonthData(activities, planned, monthOffset);
+  const today = localIso();
 
   return (
-    <section className="card calendarCard">
-      <div className="monthHeader">
-        <div>
-          <small>MONTHLY REPORT</small>
-          <h3>Training calendar</h3>
-        </div>
-        <div className="monthControls">
-          <button onClick={() => onMonthOffset(monthOffset - 1)} aria-label="Previous month">‹</button>
-          <span>{monthLabel}</span>
-          <button
-            onClick={() => onMonthOffset(monthOffset + 1)}
-            aria-label="Next month"
-            disabled={monthOffset >= 0}
-          >
-            ›
-          </button>
-        </div>
+    <section className={`card monthCard ${compact ? "monthCompact" : ""}`}>
+      <SectionHeading
+        eyebrow={compact ? "THIS MONTH" : "MONTHLY REPORT"}
+        title={month.monthLabel}
+        action={
+          <div className="monthNav">
+            <button onClick={() => setMonthOffset(monthOffset - 1)}>‹</button>
+            <button onClick={() => setMonthOffset(monthOffset + 1)} disabled={monthOffset >= 0}>›</button>
+          </div>
+        }
+      />
+
+      <div className="calendarWeekdays">
+        {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => <span key={`${d}-${i}`}>{d}</span>)}
       </div>
 
-      <div className="calendarLegend">
-        {(["rest", "hiit", "strength", "cycling", "running"] as WorkoutKind[]).map(k => (
-          <span key={k}>
-            <i className={kindMeta[k].className} />
-            {kindMeta[k].label}
-          </span>
-        ))}
-      </div>
-
-      <div className="weekdayRow">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => <span key={d}>{d}</span>)}
-      </div>
-
-      <div className="monthGrid">
-        {cells.map(cell => {
-          if (!cell.day || !cell.iso) return <div className="monthCell blank" key={cell.key} />;
+      <div className="calendarGrid">
+        {month.cells.map(cell => {
+          if (!cell.day || !cell.iso) return <div className="dayCell emptyCell" key={cell.key} />;
 
           const kinds = cell.kinds || [];
-          const primary = cell.explicitRest ? "rest" : kinds[0] || "other";
-          const neutral = !cell.explicitRest && kinds.length === 0;
-          const classes = [
-            "monthCell",
-            neutral ? "noData" : kindMeta[primary].className,
-            cell.iso === today ? "isToday" : "",
-            cell.plannedOnly ? "plannedOnly" : ""
-          ].filter(Boolean).join(" ");
-
           return (
             <div
-              className={classes}
+              className={`dayCell ${cell.iso === today ? "todayCell" : ""} ${cell.plannedOnly ? "plannedCell" : ""}`}
               key={cell.key}
               title={
                 cell.explicitRest
                   ? `${cell.iso} · Rest`
                   : kinds.length
-                    ? `${cell.iso} · ${kinds.map(k => kindMeta[k].label).join(", ")}${cell.plannedOnly ? " (planned)" : ""}`
+                    ? `${cell.iso} · ${kinds.map(k => kindMeta[k].label).join(", ")}`
                     : `${cell.iso} · No workout recorded`
               }
             >
-              <b>{cell.day}</b>
-              <div className="kindDots">
+              <span>{cell.day}</span>
+              <div className="dayDots">
                 {(cell.explicitRest ? (["rest"] as WorkoutKind[]) : kinds).slice(0, 3).map((k, idx) => (
-                  <i key={`${k}-${idx}`} className={kindMeta[k].className} />
+                  <i className={kindMeta[k].className} key={`${k}-${idx}`} />
                 ))}
               </div>
             </div>
@@ -475,58 +486,81 @@ function MonthlyTrainingCalendar({
         })}
       </div>
 
-      <div className="monthReport">
-        <span><i className="kindCycling" /> Cycling <b>{summary.cycling}</b></span>
-        <span><i className="kindStrength" /> Strength <b>{summary.strength}</b></span>
-        <span><i className="kindHiit" /> HIIT <b>{summary.hiit}</b></span>
-        <span><i className="kindRunning" /> Running <b>{summary.running}</b></span>
-        <span><i className="kindRest" /> Rest <b>{summary.rest}</b></span>
+      <div className="monthSummaryLine">
+        {(["cycling", "strength", "hiit", "running"] as WorkoutKind[])
+          .filter(k => month.counts[k] > 0)
+          .map(k => (
+            <span key={k}><i className={kindMeta[k].className} />{kindMeta[k].label} <b>{month.counts[k]}</b></span>
+          ))}
       </div>
 
-      <div className="monthTotals">
-        <b>{(totalSeconds / 3600).toFixed(1)}h</b><span>training time</span>
-        <b>{Math.round(totalLoad)}</b><span>load</span>
-      </div>
-
-      <div className="calendarNote">Solid = completed · faded = planned · grey rest only when explicitly recorded · blank = no workout recorded</div>
+      {!compact && (
+        <div className="monthTotals">
+          <div><b>{(month.timeSec / 3600).toFixed(1)}h</b><span>training time</span></div>
+          <div><b>{Math.round(month.load)}</b><span>load</span></div>
+          <div><b>{month.counts.rest}</b><span>explicit rest</span></div>
+        </div>
+      )}
     </section>
   );
 }
 
-function ThisWeek({ activities, planned }: { activities: Activity[]; planned: PlannedEvent[] }) {
-  const now = new Date();
-  const monday = new Date(now);
-  const day = monday.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  monday.setDate(monday.getDate() + diff);
-  monday.setHours(0, 0, 0, 0);
+function HealthExplorer({
+  wellness,
+  metric,
+  setMetric,
+  avgHrv7d,
+  avgRhr7d,
+  avgSleep7d,
+  avgWeight7d
+}: {
+  wellness: WellnessDay[];
+  metric: HealthMetric;
+  setMetric: (m: HealthMetric) => void;
+  avgHrv7d?: number | null;
+  avgRhr7d?: number | null;
+  avgSleep7d?: number | null;
+  avgWeight7d?: number | null;
+}) {
+  const config: Record<HealthMetric, {
+    label: string;
+    values: Array<number | null | undefined>;
+    unit: string;
+    reference?: number | null;
+  }> = {
+    hrv: { label: "HRV", values: wellness.map(x => x.hrv), unit: " ms", reference: avgHrv7d },
+    rhr: { label: "Resting HR", values: wellness.map(x => x.restingHr), unit: " bpm", reference: avgRhr7d },
+    sleep: { label: "Sleep", values: wellness.map(x => x.sleepHours), unit: " h", reference: avgSleep7d },
+    weight: { label: "Weight", values: wellness.map(x => x.weightKg), unit: " kg", reference: avgWeight7d }
+  };
 
-  const weekActivities = activities.filter(a => new Date(a.date) >= monday);
-  const weekEvents = planned.filter(p => new Date(p.start) >= monday && new Date(p.start) <= now);
-
-  const totalSec = weekActivities.reduce((s, a) => s + (a.movingTimeSec || 0), 0);
-  const load = weekActivities.reduce((s, a) => s + (a.load || 0), 0);
-  const kinds = weekActivities.map(a => workoutKind(a.sport, a.name));
-  const explicitRest = weekEvents.filter(p => eventKind(p) === "rest").length;
+  const active = config[metric];
 
   return (
-    <section className="card">
-      <div className="title">
-        <div>
-          <small>THIS WEEK</small>
-          <h3>Training summary</h3>
-        </div>
-        <span className="pill">Mon → today</span>
-      </div>
+    <section className="card explorerCard">
+      <SectionHeading
+        eyebrow="TREND"
+        title={active.label}
+        action={
+          <div className="segmented">
+            {(Object.keys(config) as HealthMetric[]).map(k => (
+              <button key={k} className={metric === k ? "active" : ""} onClick={() => setMetric(k)}>
+                {config[k].label}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
-      <div className="weekSummary">
-        <div><b>{(totalSec / 3600).toFixed(1)}h</b><span>training</span></div>
-        <div><b>{Math.round(load)}</b><span>load</span></div>
-        <div><b>{kinds.filter(k => k === "cycling").length}</b><span>rides</span></div>
-        <div><b>{kinds.filter(k => k === "strength").length}</b><span>strength</span></div>
-        <div><b>{kinds.filter(k => k === "hiit").length}</b><span>HIIT</span></div>
-        <div><b>{explicitRest}</b><span>rest notes</span></div>
-      </div>
+      <Sparkline
+        values={active.values}
+        dates={wellness.map(x => x.date)}
+        label={active.label}
+        unit={active.unit}
+        reference={active.reference}
+        connectGaps
+        smooth
+      />
     </section>
   );
 }
@@ -550,11 +584,12 @@ function WeeklyLoadBars({ activities }: { activities: Activity[] }) {
   });
 
   const max = Math.max(1, ...weeks.map(w => w.load));
+
   return (
-    <div className="weeklyBars">
+    <div className="loadBars">
       {weeks.map((w, idx) => (
-        <div className="weeklyBarCol" key={`${w.label}-${idx}`} title={`${w.label}: load ${Math.round(w.load)}`}>
-          <div className="weeklyBar" style={{ height: `${Math.max(5, (w.load / max) * 100)}%` }} />
+        <div className="loadColumn" key={`${w.label}-${idx}`} title={`${w.label}: ${Math.round(w.load)} load`}>
+          <div className="loadBar" style={{ height: `${Math.max(4, (w.load / max) * 100)}%` }} />
           <span>{idx % 2 === 0 ? w.label.split(" ")[0] : ""}</span>
         </div>
       ))}
@@ -567,54 +602,51 @@ function TrainingDistribution({ activities }: { activities: Activity[] }) {
   const seconds: Record<WorkoutKind, number> = {
     rest: 0, hiit: 0, strength: 0, cycling: 0, running: 0, other: 0
   };
+
   recent.forEach(a => {
     seconds[workoutKind(a.sport, a.name)] += a.movingTimeSec || 0;
   });
+
   const total = Object.values(seconds).reduce((a, b) => a + b, 0) || 1;
   const visible = (["cycling", "strength", "hiit", "running", "other"] as WorkoutKind[])
     .filter(k => seconds[k] > 0);
 
   return (
-    <div>
-      <div className="distributionBar">
+    <>
+      <div className="distribution">
         {visible.map(k => (
           <i
             key={k}
             className={kindMeta[k].className}
             style={{ width: `${(seconds[k] / total) * 100}%` }}
-            title={`${kindMeta[k].label}: ${(seconds[k] / 3600).toFixed(1)}h`}
           />
         ))}
       </div>
       <div className="distributionLegend">
         {visible.map(k => (
-          <span key={k}><i className={kindMeta[k].className} />{kindMeta[k].label} <b>{(seconds[k] / 3600).toFixed(1)}h</b></span>
+          <span key={k}><i className={kindMeta[k].className} />{kindMeta[k].label}<b>{(seconds[k] / 3600).toFixed(1)}h</b></span>
         ))}
       </div>
-    </div>
+    </>
   );
 }
 
-function ActivityList({ activities, limit }: { activities: Activity[]; limit?: number }) {
-  const rows = typeof limit === "number" ? activities.slice(0, limit) : activities;
+function ActivityList({ activities, limit = 8 }: { activities: Activity[]; limit?: number }) {
   return (
-    <div className="list">
-      {rows.map(a => {
+    <div className="activityList">
+      {activities.slice(0, limit).map(a => {
         const kind = workoutKind(a.sport, a.name);
         return (
-          <div className="session detailed" key={a.id + a.date}>
-            <strong className={kindMeta[kind].className}>{kindMeta[kind].label.toUpperCase()}</strong>
+          <div className="activityRow" key={a.id + a.date}>
+            <i className={`activityMark ${kindMeta[kind].className}`} />
             <div>
               <b>{a.name}</b>
               <span>{dateOnly(a.date)} · {duration(a.movingTimeSec)} · {distance(a.distanceM)}</span>
-              <small>
-                {typeof a.avgHr === "number" ? `${fmt(a.avgHr)} bpm` : "HR —"}
-                {" · "}
-                {typeof a.avgPower === "number" ? `${fmt(a.avgPower)} W` : "Power —"}
-                {typeof a.normalizedPower === "number" ? ` · NP ${fmt(a.normalizedPower)} W` : ""}
-              </small>
             </div>
-            <em><b>{fmt(a.load)}</b><span>load</span></em>
+            <div className="activityMeta">
+              <b>{fmt(a.load)}</b>
+              <span>load</span>
+            </div>
           </div>
         );
       })}
@@ -622,22 +654,133 @@ function ActivityList({ activities, limit }: { activities: Activity[]; limit?: n
   );
 }
 
-function GoalCards({ data }: { data: DashboardData }) {
-  const goals = data.stas?.goals || [];
-  if (!goals.length) return <div className="empty">No goals snapshot.</div>;
+function CyclingExplorer({
+  rides,
+  metric,
+  setMetric
+}: {
+  rides: Activity[];
+  metric: CyclingMetric;
+  setMetric: (m: CyclingMetric) => void;
+}) {
+  const chronological = [...rides].reverse();
+  const endurance = chronological.filter(a =>
+    typeof a.avgPower === "number" &&
+    typeof a.avgHr === "number" &&
+    (a.movingTimeSec || 0) >= 45 * 60
+  );
+
+  const map: Record<CyclingMetric, {
+    label: string;
+    unit: string;
+    values: Array<number | null | undefined>;
+    dates: string[];
+  }> = {
+    efficiency: {
+      label: "Endurance efficiency",
+      unit: "",
+      values: endurance.map(a =>
+        typeof a.avgPower === "number" && typeof a.avgHr === "number" && a.avgHr > 0
+          ? a.avgPower / a.avgHr
+          : null
+      ),
+      dates: endurance.map(a => dateOnly(a.date))
+    },
+    decoupling: {
+      label: "Aerobic decoupling",
+      unit: "%",
+      values: chronological.map(a => a.decouplingPct),
+      dates: chronological.map(a => dateOnly(a.date))
+    },
+    avgPower: {
+      label: "Average power",
+      unit: " W",
+      values: chronological.map(a => a.avgPower),
+      dates: chronological.map(a => dateOnly(a.date))
+    },
+    np: {
+      label: "Normalized power",
+      unit: " W",
+      values: chronological.map(a => a.normalizedPower),
+      dates: chronological.map(a => dateOnly(a.date))
+    }
+  };
+
+  const active = map[metric];
 
   return (
-    <div className="goalGrid">
-      {goals.map((g, idx) => {
+    <section className="card explorerCard">
+      <SectionHeading
+        eyebrow="CYCLING TREND"
+        title={active.label}
+        action={
+          <div className="segmented">
+            {(Object.keys(map) as CyclingMetric[]).map(k => (
+              <button key={k} className={metric === k ? "active" : ""} onClick={() => setMetric(k)}>
+                {k === "efficiency" ? "Efficiency" : k === "decoupling" ? "Drift" : k === "avgPower" ? "Avg W" : "NP"}
+              </button>
+            ))}
+          </div>
+        }
+      />
+
+      <Sparkline
+        values={active.values}
+        dates={active.dates}
+        label={active.label}
+        unit={active.unit}
+        connectGaps
+        smooth
+      />
+
+      {metric === "efficiency" && (
+        <p className="contextNote">Average watts divided by average HR on rides ≥45 min. Use it as a trend, not a standalone score.</p>
+      )}
+      {metric === "decoupling" && (
+        <p className="contextNote">Lower aerobic drift at comparable endurance work is generally a useful durability signal.</p>
+      )}
+    </section>
+  );
+}
+
+function UpcomingList({ planned }: { planned: PlannedEvent[] }) {
+  if (!planned.length) return <div className="emptyState">No upcoming sessions returned.</div>;
+
+  return (
+    <div className="activityList">
+      {planned.slice(0, 10).map(p => {
+        const kind = eventKind(p);
+        return (
+          <div className="activityRow" key={p.id + p.start}>
+            <i className={`activityMark ${kindMeta[kind].className}`} />
+            <div>
+              <b>{p.name}</b>
+              <span>{dateOnly(p.start)} · {p.type || p.category || kindMeta[kind].label} · {duration(p.movingTimeSec)}</span>
+            </div>
+            <div className="activityMeta">
+              <b>{fmt(p.load)}</b>
+              <span>load</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GoalList({ data }: { data: DashboardData }) {
+  const goals = data.stas?.goals || [];
+  if (!goals.length) return <div className="emptyState">No goals snapshot.</div>;
+
+  return (
+    <div className="goalList">
+      {goals.slice(0, 4).map((g, idx) => {
         const title = typeof g.title === "string" ? g.title : `Goal ${idx + 1}`;
         const date = typeof g.date === "string" ? g.date : null;
-        const direction = typeof g.direction === "string" ? g.direction : null;
         return (
-          <div className="goalCard" key={`${title}-${idx}`}>
-            <span>GOAL {idx + 1}</span>
-            <b>{title}</b>
-            {date && <small>{date}</small>}
-            {direction && <p>{direction}</p>}
+          <div className="goalRow" key={`${title}-${idx}`}>
+            <span>{idx + 1}</span>
+            <div><b>{title}</b>{date && <small>{date}</small>}</div>
           </div>
         );
       })}
@@ -649,7 +792,9 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("Today");
   const [days, setDays] = useState(90);
   const [monthOffset, setMonthOffset] = useState(0);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedRecoveryDate, setSelectedRecoveryDate] = useState<string | null>(null);
+  const [healthMetric, setHealthMetric] = useState<HealthMetric>("hrv");
+  const [cyclingMetric, setCyclingMetric] = useState<CyclingMetric>("efficiency");
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -675,6 +820,16 @@ export default function Dashboard() {
     return () => window.clearInterval(id);
   }, [load]);
 
+  const recoverySeries = useMemo(
+    () => buildRecoverySeries(data?.wellness || []),
+    [data]
+  );
+
+  useEffect(() => {
+    const latest = recoverySeries.filter(x => x.score !== null).at(-1)?.date;
+    if (latest && !selectedRecoveryDate) setSelectedRecoveryDate(latest);
+  }, [recoverySeries, selectedRecoveryDate]);
+
   const rides = useMemo(() => data?.activities.filter(isRide) || [], [data]);
   const today = localIso();
   const upcoming = useMemo(
@@ -685,32 +840,25 @@ export default function Dashboard() {
   if (!data) {
     return (
       <main className="appShell">
-        <div className="loading">
-          <div className="pulse" />
-          <b>{error ? "Could not load dashboard" : "Loading STAS…"}</b>
+        <div className="loadingState">
+          <i />
+          <b>{error ? "Could not load STAS" : "Loading STAS…"}</b>
           {error && <span>{error}</span>}
         </div>
       </main>
     );
   }
 
-  const latestWellness = data.wellness.at(-1);
+  const currentPoint = recoverySeries.filter(x => x.score !== null).at(-1) || null;
+  const consistency = sleepConsistency(data.wellness);
+  const weightTrend = weightTrendKg(data.wellness);
+  const balance = loadBalance(data.aggregates.load7d, data.aggregates.load28d);
   const wkg =
-    typeof data.current.ftp === "number" && typeof data.current.weightKg === "number" && data.current.weightKg > 0
+    typeof data.current.ftp === "number" &&
+    typeof data.current.weightKg === "number" &&
+    data.current.weightKg > 0
       ? data.current.ftp / data.current.weightKg
       : null;
-
-  const enduranceRides = rides.filter(a =>
-    typeof a.avgPower === "number" &&
-    typeof a.avgHr === "number" &&
-    (a.movingTimeSec || 0) >= 45 * 60
-  );
-
-  const efficiencyValues = enduranceRides.map(a =>
-    typeof a.avgPower === "number" && typeof a.avgHr === "number" && a.avgHr > 0
-      ? a.avgPower / a.avgHr
-      : null
-  );
 
   const pageDate = new Intl.DateTimeFormat(undefined, {
     weekday: "short", day: "2-digit", month: "short"
@@ -718,14 +866,13 @@ export default function Dashboard() {
 
   return (
     <main className="appShell">
-      <header className="appHeader">
+      <header className="topBar">
         <div>
           <span>{pageDate}</span>
-          <h1>STAS <em>v9</em></h1>
+          <h1>STAS <em>9.2</em></h1>
         </div>
-
-        <div className="headerActions">
-          <select value={days} onChange={(e: { target: { value: string } }) => setDays(Number(e.target.value))} aria-label="History window">
+        <div className="topActions">
+          <select value={days} onChange={(e: { target: { value: string } }) => setDays(Number(e.target.value))}>
             <option value={30}>30d</option>
             <option value={90}>90d</option>
             <option value={180}>180d</option>
@@ -736,113 +883,73 @@ export default function Dashboard() {
       </header>
 
       {tab === "Today" && (
-        <section className="screen todayScreen">
-          <RecoveryHistory data={data} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
-          <TodayWorkout planned={upcoming} />
+        <section className="screen homeScreen">
+          <RecoveryHero
+            data={data}
+            series={recoverySeries}
+            selectedDate={selectedRecoveryDate}
+            setSelectedDate={setSelectedRecoveryDate}
+          />
 
-          <MonthlyTrainingCalendar
+          <TodayAction planned={upcoming} />
+
+          <WeekSnapshot data={data} />
+
+          <MonthCard
             activities={data.activities}
             planned={data.planned}
             monthOffset={monthOffset}
-            onMonthOffset={setMonthOffset}
+            setMonthOffset={setMonthOffset}
+            compact
           />
-
-          <ThisWeek activities={data.activities} planned={data.planned} />
-
-          <section className="card">
-            <div className="title">
-              <div><small>TRAINING STATUS</small><h3>Load state</h3></div>
-              <span className="pill">Context, not a readiness verdict</span>
-            </div>
-            <div className="metrics trainingMetrics">
-              <Metric icon="↗" label="Fitness" value={fmt(data.current.fitness, 1)} />
-              <Metric icon="⚡" label="Fatigue" value={fmt(data.current.fatigue, 1)} />
-              <Metric icon="◌" label="Form" value={fmt(data.current.form, 1)} />
-              <Metric icon="W" label="FTP" value={`${fmt(data.current.ftp)} W`} />
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="title"><div><small>BODY & HEALTH</small><h3>Current picture</h3></div></div>
-            <div className="metrics">
-              <Metric icon="⚖" label="Weight" value={`${fmt(data.current.weightKg, 1)} kg`} sub={`7d avg ${fmt(data.aggregates.avgWeight7d, 1)}`} tone="health" />
-              <Metric icon="♥" label="HRV" value={`${fmt(data.current.hrv)} ms`} sub={`7d avg ${fmt(data.aggregates.avgHrv7d, 1)}`} tone="health" />
-              <Metric icon="●" label="Resting HR" value={`${fmt(data.current.restingHr)} bpm`} sub={`7d avg ${fmt(data.aggregates.avgRestingHr7d, 1)}`} tone="health" />
-              <Metric icon="☾" label="Sleep" value={`${fmt(data.current.sleepHours, 1)} h`} sub={`score ${fmt(data.current.sleepScore)}`} tone="health" />
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="title">
-              <div><small>RECENT TRAINING</small><h3>Latest sessions</h3></div>
-              <button className="link" onClick={() => setTab("Training")}>See all</button>
-            </div>
-            <ActivityList activities={data.activities} limit={4} />
-          </section>
         </section>
       )}
 
       {tab === "Health" && (
-        <section className="screen twoColScreen">
-          <section className="card">
-            <div className="title"><div><small>RECOVERY</small><h3>HRV trend</h3></div></div>
-            <Sparkline
-              values={data.wellness.map(x => x.hrv)}
-              dates={data.wellness.map(x => x.date)}
-              label="HRV"
-              unit=" ms"
-              reference={data.aggregates.avgHrv7d}
-              connectGaps
-              smooth
-            />
+        <section className="screen">
+          <section className="insightCard">
+            <SectionHeading eyebrow="HEALTH INTELLIGENCE" title="Signals, not noise" />
+            <div className="insightGrid">
+              <div>
+                <span>Recovery</span>
+                <b>{currentPoint?.score ?? "—"}</b>
+                <small>{recoveryLabel(currentPoint?.score ?? null, currentPoint?.coverage ?? 0)}</small>
+              </div>
+              <div>
+                <span>Sleep consistency</span>
+                <b>{consistency ?? "—"}</b>
+                <small>{consistency === null ? "Need more nights" : "presentation score"}</small>
+              </div>
+              <div>
+                <span>Load balance</span>
+                <b>{balance.ratio === null ? "—" : `${Math.round(balance.ratio * 100)}%`}</b>
+                <small>{balance.label}</small>
+              </div>
+              <div>
+                <span>Weight 28d</span>
+                <b>{weightTrend === null ? "—" : `${weightTrend > 0 ? "+" : ""}${weightTrend.toFixed(1)} kg`}</b>
+                <small>measured points only</small>
+              </div>
+            </div>
           </section>
 
-          <section className="card">
-            <div className="title"><div><small>RECOVERY</small><h3>Resting HR</h3></div></div>
-            <Sparkline
-              values={data.wellness.map(x => x.restingHr)}
-              dates={data.wellness.map(x => x.date)}
-              label="Resting HR"
-              unit=" bpm"
-              reference={data.aggregates.avgRestingHr7d}
-              connectGaps
-              smooth
-            />
-          </section>
+          <HealthExplorer
+            wellness={data.wellness}
+            metric={healthMetric}
+            setMetric={setHealthMetric}
+            avgHrv7d={data.aggregates.avgHrv7d}
+            avgRhr7d={data.aggregates.avgRestingHr7d}
+            avgSleep7d={data.aggregates.avgSleepHours7d}
+            avgWeight7d={data.aggregates.avgWeight7d}
+          />
 
           <section className="card">
-            <div className="title"><div><small>SLEEP</small><h3>Duration</h3></div></div>
-            <Sparkline
-              values={data.wellness.map(x => x.sleepHours)}
-              dates={data.wellness.map(x => x.date)}
-              label="Sleep"
-              unit=" h"
-              reference={data.aggregates.avgSleepHours7d}
-              connectGaps
-              smooth
-            />
-          </section>
-
-          <section className="card">
-            <div className="title"><div><small>BODY</small><h3>Weight trend</h3></div></div>
-            <Sparkline
-              values={data.wellness.map(x => x.weightKg)}
-              dates={data.wellness.map(x => x.date)}
-              label="Weight"
-              unit=" kg"
-              reference={data.aggregates.avgWeight7d}
-              connectGaps
-              smooth
-            />
-          </section>
-
-          <section className="card spanAll">
-            <div className="title"><div><small>WELLNESS</small><h3>Current metrics</h3></div></div>
-            <div className="metrics">
-              <Metric icon="◉" label="Body Battery" value={fmt(latestWellness?.bodyBattery)} tone="health" />
-              <Metric icon="⚡" label="Stress" value={fmt(latestWellness?.stress)} tone="health" />
-              <Metric icon="O₂" label="SpO₂" value={`${fmt(latestWellness?.spo2, 1)}%`} tone="health" />
-              <Metric icon="↟" label="Respiration" value={fmt(latestWellness?.respiration, 1)} tone="health" />
+            <SectionHeading eyebrow="CURRENT" title="Body & recovery" />
+            <div className="simpleMetrics">
+              <div><span>HRV</span><b>{fmt(data.current.hrv)} ms</b><small>7d {fmt(data.aggregates.avgHrv7d, 1)}</small></div>
+              <div><span>Resting HR</span><b>{fmt(data.current.restingHr)} bpm</b><small>7d {fmt(data.aggregates.avgRestingHr7d, 1)}</small></div>
+              <div><span>Sleep</span><b>{fmt(data.current.sleepHours, 1)} h</b><small>score {fmt(data.current.sleepScore)}</small></div>
+              <div><span>Weight</span><b>{fmt(data.current.weightKg, 1)} kg</b><small>7d {fmt(data.aggregates.avgWeight7d, 1)}</small></div>
             </div>
           </section>
         </section>
@@ -850,142 +957,93 @@ export default function Dashboard() {
 
       {tab === "Training" && (
         <section className="screen">
-          <section className="card">
-            <div className="title">
-              <div><small>TRAINING LOAD</small><h3>12-week load</h3></div>
-              <span className="pill">7d {Math.round(data.aggregates.load7d)} · 28d {Math.round(data.aggregates.load28d)}</span>
+          <section className="statusCard">
+            <SectionHeading
+              eyebrow="TRAINING STATUS"
+              title="Load context"
+              action={<span className="subtleTag">{balance.label}</span>}
+            />
+            <div className="statusTriplet">
+              <div><span>Fitness</span><b>{fmt(data.current.fitness, 1)}</b></div>
+              <div><span>Fatigue</span><b>{fmt(data.current.fatigue, 1)}</b></div>
+              <div><span>Form</span><b>{fmt(data.current.form, 1)}</b></div>
             </div>
+            <p>Fitness, Fatigue and Form describe load context. They are not an automatic readiness decision.</p>
+          </section>
+
+          <section className="card">
+            <SectionHeading
+              eyebrow="12 WEEKS"
+              title="Training load"
+              action={<span className="subtleTag">7d {Math.round(data.aggregates.load7d)} · 28d {Math.round(data.aggregates.load28d)}</span>}
+            />
             <WeeklyLoadBars activities={data.activities} />
           </section>
 
           <section className="card">
-            <div className="title"><div><small>DISTRIBUTION</small><h3>Last 28 days</h3></div></div>
+            <SectionHeading eyebrow="LAST 28 DAYS" title="Where the time went" />
             <TrainingDistribution activities={data.activities} />
           </section>
 
           <section className="card">
-            <div className="title"><div><small>TRAINING STATUS</small><h3>Fitness · fatigue · form</h3></div></div>
-            <div className="metrics trainingMetrics">
-              <Metric icon="↗" label="Fitness" value={fmt(data.current.fitness, 1)} />
-              <Metric icon="⚡" label="Fatigue" value={fmt(data.current.fatigue, 1)} />
-              <Metric icon="◌" label="Form" value={fmt(data.current.form, 1)} />
-              <Metric icon="◉" label="Sessions 28d" value={`${data.aggregates.sessions28d}`} />
-            </div>
-          </section>
-
-          <section className="card">
-            <div className="title"><div><small>HISTORY</small><h3>Recent sessions</h3></div></div>
-            <ActivityList activities={data.activities} />
+            <SectionHeading eyebrow="RECENT" title="Sessions" />
+            <ActivityList activities={data.activities} limit={10} />
           </section>
         </section>
       )}
 
       {tab === "Cycling" && (
-        <section className="screen twoColScreen">
-          <section className="card accent spanAll">
-            <div className="title">
-              <div><small>CYCLING</small><h3>Performance snapshot</h3></div>
-              <span className="pill">{fmt(data.current.ftp)} W FTP</span>
+        <section className="screen">
+          <section className="performanceCard">
+            <div>
+              <span className="kicker">CYCLING</span>
+              <h2>Performance</h2>
             </div>
-            <div className="metrics cyclingMetrics">
-              <Metric icon="W" label="FTP" value={`${fmt(data.current.ftp)} W`} tone="cycling" />
-              <Metric icon="⚖" label="W/kg" value={fmt(wkg, 2)} tone="cycling" />
-              <Metric icon="◉" label="Rides 28d" value={`${data.aggregates.rideSessions28d}`} tone="cycling" />
-              <Metric icon="↗" label="Bike time 28d" value={`${fmt(data.aggregates.bikeHours28d, 1)} h`} tone="cycling" />
+            <div className="performanceNumbers">
+              <div><span>FTP</span><b>{fmt(data.current.ftp)} W</b></div>
+              <div><span>W/kg</span><b>{fmt(wkg, 2)}</b></div>
+              <div><span>28d rides</span><b>{data.aggregates.rideSessions28d}</b></div>
+              <div><span>28d time</span><b>{fmt(data.aggregates.bikeHours28d, 1)} h</b></div>
             </div>
           </section>
 
-          <section className="card">
-            <div className="title"><div><small>POWER</small><h3>Average power</h3></div></div>
-            <Sparkline
-              values={[...rides].reverse().map(x => x.avgPower)}
-              dates={[...rides].reverse().map(x => dateOnly(x.date))}
-              label="Average power"
-              unit=" W"
-              connectGaps
-              smooth
-            />
-          </section>
+          <CyclingExplorer rides={rides} metric={cyclingMetric} setMetric={setCyclingMetric} />
 
           <section className="card">
-            <div className="title"><div><small>POWER</small><h3>Normalized power</h3></div></div>
-            <Sparkline
-              values={[...rides].reverse().map(x => x.normalizedPower)}
-              dates={[...rides].reverse().map(x => dateOnly(x.date))}
-              label="Normalized power"
-              unit=" W"
-              connectGaps
-              smooth
-            />
-          </section>
-
-          <section className="card">
-            <div className="title"><div><small>EFFICIENCY</small><h3>Power / HR</h3></div></div>
-            <Sparkline
-              values={[...efficiencyValues].reverse()}
-              dates={[...enduranceRides].reverse().map(x => dateOnly(x.date))}
-              label="Power per heartbeat"
-              unit=""
-              connectGaps
-              smooth
-            />
-            <p className="softCopy">Simple endurance efficiency: average watts divided by average HR for rides ≥45 min.</p>
-          </section>
-
-          <section className="card">
-            <div className="title"><div><small>DURABILITY</small><h3>Aerobic decoupling</h3></div></div>
-            <Sparkline
-              values={[...rides].reverse().map(x => x.decouplingPct)}
-              dates={[...rides].reverse().map(x => dateOnly(x.date))}
-              label="Aerobic decoupling"
-              unit="%"
-              connectGaps
-              smooth
-            />
-            <p className="softCopy">Lower drift at comparable endurance work is generally a useful durability signal.</p>
-          </section>
-
-          <section className="card spanAll">
-            <div className="title"><div><small>RIDES</small><h3>Recent cycling</h3></div></div>
-            <ActivityList activities={rides} limit={12} />
+            <SectionHeading eyebrow="RECENT" title="Rides" />
+            <ActivityList activities={rides} limit={10} />
           </section>
         </section>
       )}
 
       {tab === "Plan" && (
         <section className="screen">
+          <MonthCard
+            activities={data.activities}
+            planned={data.planned}
+            monthOffset={monthOffset}
+            setMonthOffset={setMonthOffset}
+          />
+
           <section className="card">
-            <div className="title"><div><small>UPCOMING</small><h3>Next sessions</h3></div></div>
-            <div className="list">
-              {upcoming.slice(0, 12).map(p => {
-                const kind = eventKind(p);
-                return (
-                  <div className="session detailed" key={p.id + p.start}>
-                    <strong className={kindMeta[kind].className}>{kindMeta[kind].label.toUpperCase()}</strong>
-                    <div>
-                      <b>{p.name}</b>
-                      <span>{dateOnly(p.start)} · {p.type || p.category || kindMeta[kind].label} · {duration(p.movingTimeSec)}</span>
-                      {p.description && <small>{p.description}</small>}
-                    </div>
-                    <em><b>{fmt(p.load)}</b><span>load</span></em>
-                  </div>
-                );
-              })}
-              {!upcoming.length && <div className="empty">No upcoming sessions returned.</div>}
+            <SectionHeading eyebrow="UPCOMING" title="Next sessions" />
+            <UpcomingList planned={upcoming} />
+          </section>
+
+          <section className="card">
+            <SectionHeading eyebrow="GOALS" title="Direction" />
+            <GoalList data={data} />
+          </section>
+
+          <section className="card sourcesCard">
+            <SectionHeading eyebrow="DATA" title="Sources" />
+            <div>
+              <span>Intervals.icu</span>
+              <b className={data.sources.intervals ? "good" : "bad"}>{data.sources.intervals ? "Connected" : "Unavailable"}</b>
             </div>
-          </section>
-
-          <section className="card">
-            <div className="title"><div><small>GOALS</small><h3>Direction</h3></div></div>
-            <GoalCards data={data} />
-          </section>
-
-          <section className="card">
-            <div className="title"><div><small>CONNECTIONS</small><h3>Data sources</h3></div></div>
-            <div className="connections">
-              <div><span>Intervals.icu</span><b className={data.sources.intervals ? "goodText" : "badText"}>{data.sources.intervals ? "Connected" : "Unavailable"}</b></div>
-              <div><span>Withings</span><b className={data.sources.withings === "connected" ? "goodText" : ""}>{data.sources.withings.replaceAll("_", " ")}</b></div>
-              <div><span>STAS context</span><b>{data.sources.stasContext}</b></div>
+            <div>
+              <span>Withings</span>
+              <b className={data.sources.withings === "connected" ? "good" : ""}>{data.sources.withings.replaceAll("_", " ")}</b>
             </div>
           </section>
         </section>
