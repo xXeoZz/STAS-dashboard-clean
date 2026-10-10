@@ -2,658 +2,153 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import Sparkline from "@/components/Sparkline";
-import type { Activity, DashboardData, WellnessDay } from "@/lib/types";
+import type { Activity, DashboardData } from "@/lib/types";
 
-const tabs = ["Overview", "Health", "Training", "Cycling", "Calendar", "Goals & Rules", "Data"];
+type Tab = "Today" | "Health" | "Training" | "Cycling" | "Plan";
+const tabs: Array<{key:Tab; label:string; icon:string}> = [
+  {key:"Today",label:"Today",icon:"◉"},
+  {key:"Health",label:"Health",icon:"♥"},
+  {key:"Training",label:"Training",icon:"↗"},
+  {key:"Cycling",label:"Cycling",icon:"◌"},
+  {key:"Plan",label:"Plan",icon:"▦"}
+];
 
-function fmt(v: number | null | undefined, digits = 0) {
-  return typeof v === "number" && Number.isFinite(v) ? v.toFixed(digits) : "—";
+const fmt=(v:number|null|undefined,d=0)=>typeof v==="number"&&Number.isFinite(v)?v.toFixed(d):"—";
+const dateOnly=(s:string)=>s?s.slice(0,10):"—";
+const duration=(s?:number|null)=>!s?"—":`${Math.floor(s/3600)?`${Math.floor(s/3600)}h `:""}${Math.floor((s%3600)/60)}m`;
+const distance=(m?:number|null)=>typeof m==="number"?`${(m/1000).toFixed(1)} km`:"—";
+const isRide=(a:Activity)=>/ride|cycling|bike|virtualride/i.test(a.sport);
+const clamp=(v:number,min=0,max=100)=>Math.max(min,Math.min(max,v));
+
+function Donut({score}:{score:number|null}) {
+  const style={"--score":`${score==null?0:clamp(score)}%`} as CSSProperties;
+  return <div className="donut" style={style}><div className="donutCore"><b>{score??"—"}</b><span>recovery</span></div></div>;
 }
 
-function duration(sec?: number | null) {
-  if (!sec) return "—";
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  return `${h ? `${h}h ` : ""}${m}m`;
+function Metric({icon,label,value,sub}:{icon:string;label:string;value:string;sub?:string}) {
+  return <div className="metric"><span>{icon}</span><div><small>{label}</small><b>{value}</b>{sub&&<em>{sub}</em>}</div></div>;
 }
 
-function distance(m?: number | null) {
-  return typeof m === "number" ? `${(m / 1000).toFixed(1)} km` : "—";
-}
-
-function dateOnly(s: string) {
-  return s ? s.slice(0, 10) : "—";
-}
-
-function isRide(a: Activity) {
-  return /ride|cycling|bike|virtualride/i.test(a.sport);
-}
-
-function clamp(v: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, v));
-}
-
-function MetricCard({
-  icon,
-  label,
-  value,
-  sub,
-  tone = "blue"
-}: {
-  icon: string;
-  label: string;
-  value: string;
-  sub?: string;
-  tone?: "blue" | "pink" | "green" | "orange" | "purple";
-}) {
-  return (
-    <div className={`metricCard tone-${tone}`}>
-      <div className="metricTop">
-        <span className="metricIcon">{icon}</span>
-        <span className="metricLabel">{label}</span>
-      </div>
-      <div className="metricValue">{value}</div>
-      {sub && <div className="metricSub">{sub}</div>}
-    </div>
-  );
-}
-
-function RingMetric({
-  label,
-  value,
-  detail,
-  pct,
-  tone = "blue"
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  pct: number;
-  tone?: "blue" | "pink" | "green" | "orange";
-}) {
-  const style = { "--ring-p": `${clamp(pct, 0, 100)}%` } as CSSProperties;
-
-  return (
-    <div className="ringMetric">
-      <div className={`ring tone-${tone}`} style={style}>
-        <div className="ringInner"><b>{value}</b></div>
-      </div>
-      <div>
-        <b>{label}</b>
-        {detail && <span>{detail}</span>}
-      </div>
-    </div>
-  );
-}
-
-function HealthTable({ rows }: { rows: WellnessDay[] }) {
-  return (
-    <div className="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th><th>HRV</th><th>RHR</th><th>Sleep</th><th>Sleep score</th><th>Steps</th>
-            <th>Weight</th><th>Body fat</th><th>Muscle</th><th>Body Battery</th><th>Stress</th><th>SpO₂</th>
-          </tr>
-        </thead>
-        <tbody>
-          {[...rows].reverse().slice(0, 30).map((w, i) => (
-            <tr key={`${w.date}-${i}`}>
-              <td>{w.date}</td>
-              <td>{fmt(w.hrv)}</td>
-              <td>{fmt(w.restingHr)}</td>
-              <td>{fmt(w.sleepHours, 1)}h</td>
-              <td>{fmt(w.sleepScore)}</td>
-              <td>{fmt(w.steps)}</td>
-              <td>{fmt(w.weightKg, 1)} kg</td>
-              <td>{fmt(w.bodyFatPct, 1)}%</td>
-              <td>{fmt(w.muscleMassKg, 1)} kg</td>
-              <td>{fmt(w.bodyBattery)}</td>
-              <td>{fmt(w.stress)}</td>
-              <td>{fmt(w.spo2, 1)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function LoadBars({ activities }: { activities: Activity[] }) {
-  const points = [...activities]
-    .filter(a => typeof a.load === "number" && a.date)
-    .sort((a, b) => a.date.localeCompare(b.date))
-    .slice(-18);
-
-  const max = Math.max(1, ...points.map(x => x.load || 0));
-  if (!points.length) return <div className="empty">No recent load data</div>;
-
-  return (
-    <div className="loadChart" aria-label="Recent training load">
-      {points.map((a, i) => {
-        const h = 18 + ((a.load || 0) / max) * 82;
-        return (
-          <div className="loadBarWrap" key={`${a.id}-${i}`}>
-            <div
-              className="loadBar"
-              style={{ height: `${h}%` }}
-              title={`${dateOnly(a.date)} · ${a.name} · load ${fmt(a.load)}`}
-            />
-            <span>{new Date(`${dateOnly(a.date)}T12:00:00`).toLocaleDateString(undefined, { day: "numeric" })}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ScheduleStrip({ planned }: { planned: DashboardData["planned"] }) {
-  const base = new Date();
-  base.setHours(12, 0, 0, 0);
-
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(base);
-    d.setDate(base.getDate() + i);
-    const iso = d.toISOString().slice(0, 10);
-
-    return {
-      iso,
-      dow: d.toLocaleDateString(undefined, { weekday: "short" }),
-      day: d.getDate(),
-      has: planned.some(p => dateOnly(p.start) === iso)
-    };
+function Schedule({planned}:{planned:DashboardData["planned"]}) {
+  const base=new Date(); base.setHours(12,0,0,0);
+  const days=Array.from({length:7},(_,i)=>{
+    const d=new Date(base); d.setDate(base.getDate()+i);
+    const iso=d.toISOString().slice(0,10);
+    return {iso,day:d.getDate(),dow:d.toLocaleDateString(undefined,{weekday:"short"}),has:planned.some(p=>dateOnly(p.start)===iso)};
   });
-
-  return (
-    <div className="weekStrip">
-      {days.map((d, i) => (
-        <div key={d.iso} className={`dayDot ${d.has ? "planned" : ""} ${i === 0 ? "today" : ""}`}>
-          <span>{d.dow}</span>
-          <b>{d.day}</b>
-        </div>
-      ))}
-    </div>
-  );
+  return <div className="schedule">{days.map((d,i)=><div key={d.iso} className={`${i===0?"today":""} ${d.has?"has":""}`}><span>{d.dow}</span><b>{d.day}</b><i/></div>)}</div>;
 }
 
-export default function Dashboard() {
-  const [tab, setTab] = useState("Overview");
-  const [days, setDays] = useState(90);
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function Dashboard(){
+  const [tab,setTab]=useState<Tab>("Today");
+  const [days,setDays]=useState(90);
+  const [data,setData]=useState<DashboardData|null>(null);
+  const [error,setError]=useState<string|null>(null);
+  const [loading,setLoading]=useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch(`/api/dashboard?days=${days}`, { cache: "no-store" });
-      const json = await res.json();
-
-      if (!res.ok) throw new Error(json.error || "Dashboard request failed");
+  const load=useCallback(async()=>{
+    setLoading(true); setError(null);
+    try{
+      const res=await fetch(`/api/dashboard?days=${days}`,{cache:"no-store"});
+      const json=await res.json();
+      if(!res.ok) throw new Error(json.error||"Dashboard request failed");
       setData(json);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Dashboard request failed");
-    } finally {
-      setLoading(false);
-    }
-  }, [days]);
+    }catch(e){setError(e instanceof Error?e.message:"Dashboard request failed")}
+    finally{setLoading(false)}
+  },[days]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(()=>{load()},[load]);
+  useEffect(()=>{const id=window.setInterval(load,300000); return()=>window.clearInterval(id)},[load]);
 
-  useEffect(() => {
-    const id = window.setInterval(load, 5 * 60 * 1000);
-    return () => window.clearInterval(id);
-  }, [load]);
+  const rides=useMemo(()=>data?.activities.filter(isRide)||[],[data]);
 
-  const rides = useMemo(() => data?.activities.filter(isRide) || [], [data]);
-  const latestWellness = data?.wellness[data.wellness.length - 1];
+  if(!data) return <main className="appShell"><div className="loading"><div className="pulse"/><b>{error?"Could not load dashboard":"Loading your dashboard…"}</b>{error&&<span>{error}</span>}</div></main>;
 
-  const avgWeeklyLoad28 = data ? data.aggregates.load28d / 4 : 0;
-  const loadRatioPct =
-    data && avgWeeklyLoad28 > 0
-      ? clamp((data.aggregates.load7d / avgWeeklyLoad28) * 100, 0, 180)
-      : 0;
+  const sleepScore=typeof data.current.sleepScore==="number"?Math.round(clamp(data.current.sleepScore)):null;
+  const hrvScore=data.current.hrv&&data.aggregates.avgHrv7d?Math.round(clamp((data.current.hrv/data.aggregates.avgHrv7d)*85,45,100)):null;
+  const rhrScore=data.current.restingHr&&data.aggregates.avgRestingHr7d?Math.round(clamp((data.aggregates.avgRestingHr7d/data.current.restingHr)*85,45,100)):null;
+  const scores=[sleepScore,hrvScore,rhrScore].filter((x):x is number=>x!==null);
+  const recovery=scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):null;
+  const greeting=new Intl.DateTimeFormat(undefined,{weekday:"short",day:"2-digit",month:"short"}).format(new Date());
 
-  const hrvPct =
-    data && data.aggregates.avgHrv7d && data.current.hrv
-      ? clamp((data.current.hrv / data.aggregates.avgHrv7d) * 100, 0, 140)
-      : 0;
+  return <main className="appShell">
+    <header>
+      <div><span>{greeting}</span><h1>STAS</h1></div>
+      <div className="headerActions">
+        <select value={days} onChange={e=>setDays(Number(e.target.value))}><option value={30}>30d</option><option value={90}>90d</option><option value={180}>180d</option><option value={365}>1y</option></select>
+        <button onClick={load} disabled={loading}>{loading?"…":"↻"}</button>
+      </div>
+    </header>
 
-  const sleepPct =
-    data?.current.sleepHours
-      ? clamp((data.current.sleepHours / 8) * 100, 0, 120)
-      : 0;
-
-  return (
-    <main className="shell">
-      <section className="hero">
-        <div className="heroGlow glowOne" />
-        <div className="heroGlow glowTwo" />
-
-        <div className="heroContent">
-          <div>
-            <div className="eyebrow">Private endurance dashboard</div>
-            <h1>STAS Training & Health</h1>
-            <p>Live training, recovery, body weight and coaching context in one view.</p>
-          </div>
-
-          <div className="heroActions">
-            <div className="windowPicker">
-              <span>Window</span>
-              <select value={days} onChange={e => setDays(Number(e.target.value))}>
-                <option value={30}>30 days</option>
-                <option value={90}>90 days</option>
-                <option value={180}>180 days</option>
-                <option value={365}>365 days</option>
-              </select>
-            </div>
-
-            <button className="refreshButton" onClick={load} disabled={loading}>
-              {loading ? "Refreshing…" : "Refresh now"}
-            </button>
-          </div>
-        </div>
-
-        <div className="heroPills">
-          <span className={data?.sources.intervals ? "sourcePill good" : "sourcePill bad"}>● Intervals</span>
-          <span className={data?.sources.withings === "connected" ? "sourcePill good" : "sourcePill"}>● Withings</span>
-          <span className="sourcePill">● Garmin via Intervals</span>
-          {data && (
-            <span className="sourcePill subtle">
-              Updated {new Date(data.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
+    {tab==="Today"&&<section className="screen">
+      <section className="heroCard">
+        <small>DAILY RECOVERY</small>
+        <Donut score={recovery}/>
+        <h2>{recovery!=null&&recovery>=80?"Ready for quality work":recovery!=null&&recovery>=65?"Moderate readiness":"Keep it controlled"}</h2>
+        <p>Sleep, HRV and resting heart rate combined as context — not an automatic training verdict.</p>
+        <div className="signals">
+          <div><span>♥ HRV</span><b>{fmt(data.current.hrv)} ms</b></div>
+          <div><span>● RHR</span><b>{fmt(data.current.restingHr)} bpm</b></div>
+          <div><span>☾ Sleep</span><b>{fmt(data.current.sleepHours,1)} h</b></div>
         </div>
       </section>
 
-      {error && <div className="error">{error}</div>}
-      {!data && !error && <div className="panel">Loading live data…</div>}
+      <section className="card accent">
+        <div className="title"><div><small>TRAINING STATUS</small><h3>Load & form</h3></div><span className="pill">{fmt(data.aggregates.load7d)} load</span></div>
+        <div className="metrics">
+          <Metric icon="↗" label="Fitness" value={fmt(data.current.fitness,1)}/>
+          <Metric icon="⚡" label="Fatigue" value={fmt(data.current.fatigue,1)}/>
+          <Metric icon="◌" label="Form" value={fmt(data.current.form,1)}/>
+          <Metric icon="W" label="FTP" value={`${fmt(data.current.ftp)} W`}/>
+        </div>
+      </section>
 
-      {data && (
-        <>
-          <section className="visualMetrics">
-            <MetricCard icon="↗" label="Fitness" value={fmt(data.current.fitness, 1)} sub="CTL / long-term load" tone="blue" />
-            <MetricCard icon="⚡" label="Fatigue" value={fmt(data.current.fatigue, 1)} sub="ATL / short-term load" tone="orange" />
-            <MetricCard icon="◌" label="Form" value={fmt(data.current.form, 1)} sub="Fitness minus fatigue" tone="green" />
-            <MetricCard icon="♥" label="HRV" value={`${fmt(data.current.hrv)} ms`} sub={`7d avg ${fmt(data.aggregates.avgHrv7d, 1)}`} tone="pink" />
-            <MetricCard icon="☾" label="Sleep" value={`${fmt(data.current.sleepHours, 1)} h`} sub={`score ${fmt(data.current.sleepScore)}`} tone="purple" />
-            <MetricCard icon="⚖" label="Weight" value={`${fmt(data.current.weightKg, 1)} kg`} sub={`7d avg ${fmt(data.aggregates.avgWeight7d, 1)}`} tone="green" />
-            <MetricCard icon="W" label="FTP" value={`${fmt(data.current.ftp)} W`} sub="Cycling threshold" tone="blue" />
-            <MetricCard icon="●" label="Resting HR" value={`${fmt(data.current.restingHr)} bpm`} sub={`7d avg ${fmt(data.aggregates.avgRestingHr7d, 1)}`} tone="orange" />
-          </section>
+      <section className="card">
+        <div className="title"><div><small>BODY</small><h3>Health snapshot</h3></div></div>
+        <div className="metrics">
+          <Metric icon="⚖" label="Weight" value={`${fmt(data.current.weightKg,1)} kg`} sub={`7d avg ${fmt(data.aggregates.avgWeight7d,1)}`}/>
+          <Metric icon="♥" label="HRV" value={`${fmt(data.current.hrv)} ms`} sub={`7d avg ${fmt(data.aggregates.avgHrv7d,1)}`}/>
+          <Metric icon="●" label="Resting HR" value={`${fmt(data.current.restingHr)} bpm`} sub={`7d avg ${fmt(data.aggregates.avgRestingHr7d,1)}`}/>
+          <Metric icon="☾" label="Sleep" value={`${fmt(data.current.sleepHours,1)} h`} sub={`score ${fmt(data.current.sleepScore)}`}/>
+        </div>
+      </section>
 
-          <nav className="tabs">
-            {tabs.map(t => (
-              <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-                {t}
-              </button>
-            ))}
-          </nav>
+      <section className="card">
+        <div className="title"><div><small>NEXT 7 DAYS</small><h3>Schedule</h3></div></div>
+        <Schedule planned={data.planned}/>
+        <div className="list">{data.planned.slice(0,4).map(p=><div className="row" key={p.id+p.start}><i/><div><b>{p.name}</b><span>{dateOnly(p.start)} · {duration(p.movingTimeSec)}</span></div></div>)}</div>
+      </section>
 
-          {tab === "Overview" && (
-            <div className="overviewGrid">
-              <section className="panel loadPanel">
-                <div className="panelHeading">
-                  <div><span className="panelKicker">Training load</span><h2>Recent workload</h2></div>
-                  <span className="badge">{days}d view</span>
-                </div>
+      <section className="card">
+        <div className="title"><div><small>RECENT TRAINING</small><h3>Latest sessions</h3></div><button className="link" onClick={()=>setTab("Training")}>See all</button></div>
+        <div className="list">{data.activities.slice(0,5).map(a=><div className="session" key={a.id+a.date}><strong>{isRide(a)?"BIKE":/weight|strength/i.test(a.sport)?"GYM":"MOVE"}</strong><div><b>{a.name}</b><span>{dateOnly(a.date)} · {duration(a.movingTimeSec)}</span></div><em><b>{fmt(a.load)}</b><span>load</span></em></div>)}</div>
+      </section>
+    </section>}
 
-                <div className="loadHeadline">
-                  <b>{fmt(data.aggregates.load7d)}</b>
-                  <span>7-day load</span>
-                </div>
+    {tab==="Health"&&<section className="screen">
+      <section className="card"><div className="title"><div><small>RECOVERY</small><h3>HRV trend</h3></div></div><Sparkline values={data.wellness.map(x=>x.hrv)} dates={data.wellness.map(x=>x.date)} label="HRV" unit=" ms" reference={data.aggregates.avgHrv7d}/></section>
+      <section className="card"><div className="title"><div><small>RECOVERY</small><h3>Resting HR</h3></div></div><Sparkline values={data.wellness.map(x=>x.restingHr)} dates={data.wellness.map(x=>x.date)} label="Resting HR" unit=" bpm" reference={data.aggregates.avgRestingHr7d}/></section>
+      <section className="card"><div className="title"><div><small>SLEEP</small><h3>Sleep duration</h3></div></div><Sparkline values={data.wellness.map(x=>x.sleepHours)} dates={data.wellness.map(x=>x.date)} label="Sleep" unit=" h" reference={data.aggregates.avgSleepHours7d}/></section>
+      <section className="card"><div className="title"><div><small>BODY</small><h3>Weight</h3></div></div><Sparkline values={data.wellness.map(x=>x.weightKg)} dates={data.wellness.map(x=>x.date)} label="Weight" unit=" kg" reference={data.aggregates.avgWeight7d}/></section>
+    </section>}
 
-                <LoadBars activities={data.activities} />
+    {tab==="Training"&&<section className="screen">
+      <section className="card"><div className="title"><div><small>TRAINING</small><h3>28-day summary</h3></div></div><div className="metrics"><Metric icon="◉" label="Sessions" value={`${data.aggregates.sessions28d}`}/><Metric icon="↗" label="Load" value={fmt(data.aggregates.load28d)}/><Metric icon="🚲" label="Bike time" value={`${fmt(data.aggregates.bikeHours28d,1)} h`}/><Metric icon="GYM" label="Strength/HIIT" value={`${data.aggregates.strengthSessions28d}`}/></div></section>
+      <section className="card"><div className="title"><div><small>HISTORY</small><h3>Recent sessions</h3></div></div><div className="list">{data.activities.map(a=><div className="session detailed" key={a.id+a.date}><strong>{isRide(a)?"BIKE":/weight|strength/i.test(a.sport)?"GYM":"MOVE"}</strong><div><b>{a.name}</b><span>{dateOnly(a.date)} · {duration(a.movingTimeSec)} · {distance(a.distanceM)}</span><small>{fmt(a.avgHr)} bpm · {fmt(a.avgPower)} W · NP {fmt(a.normalizedPower)} W</small></div><em><b>{fmt(a.load)}</b><span>load</span></em></div>)}</div></section>
+    </section>}
 
-                <div className="microStats">
-                  <div><b>{data.aggregates.sessions7d}</b><span>sessions · 7d</span></div>
-                  <div><b>{fmt(data.aggregates.load28d)}</b><span>load · 28d</span></div>
-                  <div><b>{fmt(data.aggregates.bikeHours28d, 1)}h</b><span>cycling · 28d</span></div>
-                </div>
-              </section>
+    {tab==="Cycling"&&<section className="screen">
+      <section className="card accent"><div className="title"><div><small>CYCLING</small><h3>Power profile</h3></div><span className="pill">{fmt(data.current.ftp)} W FTP</span></div><div className="metrics"><Metric icon="W" label="FTP" value={`${fmt(data.current.ftp)} W`}/><Metric icon="◉" label="Rides 28d" value={`${data.aggregates.rideSessions28d}`}/><Metric icon="↗" label="Bike time" value={`${fmt(data.aggregates.bikeHours28d,1)} h`}/><Metric icon="⚖" label="W/kg" value={data.current.ftp&&data.current.weightKg?(data.current.ftp/data.current.weightKg).toFixed(2):"—"}/></div></section>
+      <section className="card"><div className="title"><div><small>POWER</small><h3>Average power</h3></div></div><Sparkline values={[...rides].reverse().map(x=>x.avgPower)} dates={[...rides].reverse().map(x=>dateOnly(x.date))} label="Average power" unit=" W"/></section>
+      <section className="card"><div className="title"><div><small>POWER</small><h3>Normalized power</h3></div></div><Sparkline values={[...rides].reverse().map(x=>x.normalizedPower)} dates={[...rides].reverse().map(x=>dateOnly(x.date))} label="Normalized power" unit=" W"/></section>
+    </section>}
 
-              <section className="panel readinessPanel">
-                <div className="panelHeading">
-                  <div><span className="panelKicker">Recovery context</span><h2>Current signals</h2></div>
-                </div>
+    {tab==="Plan"&&<section className="screen">
+      <section className="card"><div className="title"><div><small>CALENDAR</small><h3>Next 7 days</h3></div></div><Schedule planned={data.planned}/></section>
+      <section className="card"><div className="title"><div><small>PLANNED WORK</small><h3>Upcoming sessions</h3></div></div><div className="list">{data.planned.map(p=><div className="session detailed" key={p.id+p.start}><strong>PLAN</strong><div><b>{p.name}</b><span>{dateOnly(p.start)} · {p.type||p.category||"Session"} · {duration(p.movingTimeSec)}</span>{p.description&&<small>{p.description}</small>}</div><em><b>{fmt(p.load)}</b><span>load</span></em></div>)}</div></section>
+      <section className="card"><div className="title"><div><small>CONNECTIONS</small><h3>Data sources</h3></div></div><div className="connections"><div><span>Intervals.icu</span><b>{data.sources.intervals?"Connected":"Unavailable"}</b></div><div><span>Withings</span><b>{data.sources.withings.replaceAll("_"," ")}</b></div><div><span>STAS context</span><b>{data.sources.stasContext}</b></div></div></section>
+    </section>}
 
-                <div className="rings">
-                  <RingMetric label="Load vs 4wk avg" value={`${fmt(loadRatioPct)}%`} detail="7d relative load" pct={Math.min(loadRatioPct, 100)} tone="orange" />
-                  <RingMetric label="HRV vs 7d" value={`${fmt(hrvPct)}%`} detail={`${fmt(data.current.hrv)} ms`} pct={Math.min(hrvPct, 100)} tone="pink" />
-                  <RingMetric label="Sleep target" value={`${fmt(data.current.sleepHours, 1)}h`} detail="vs 8h reference" pct={Math.min(sleepPct, 100)} tone="blue" />
-                </div>
-
-                <div className="healthStrip">
-                  <div><span>RHR</span><b>{fmt(data.current.restingHr)} bpm</b></div>
-                  <div><span>Weight</span><b>{fmt(data.current.weightKg, 1)} kg</b></div>
-                  <div><span>FTP</span><b>{fmt(data.current.ftp)} W</b></div>
-                </div>
-              </section>
-
-              <section className="panel widePanel">
-                <div className="panelHeading">
-                  <div><span className="panelKicker">Health trend</span><h2>HRV</h2></div>
-                  <span className="badge">7d avg {fmt(data.aggregates.avgHrv7d, 1)}</span>
-                </div>
-
-                <Sparkline
-                  values={data.wellness.map(x => x.hrv)}
-                  dates={data.wellness.map(x => x.date)}
-                  label="HRV"
-                  unit=" ms"
-                  reference={data.aggregates.avgHrv7d}
-                />
-              </section>
-
-              <section className="panel sidePanel">
-                <div className="panelHeading">
-                  <div><span className="panelKicker">Schedule</span><h2>Next 7 days</h2></div>
-                </div>
-
-                <ScheduleStrip planned={data.planned} />
-
-                <div className="upcomingList">
-                  {data.planned.length ? data.planned.slice(0, 4).map(p => (
-                    <div className="compactSession" key={p.id + p.start}>
-                      <span className="sessionDot" />
-                      <div>
-                        <b>{p.name}</b>
-                        <span>{dateOnly(p.start)} · {duration(p.movingTimeSec)}</span>
-                      </div>
-                    </div>
-                  )) : <div className="empty">No upcoming events returned.</div>}
-                </div>
-              </section>
-
-              <section className="panel sessionsPanel">
-                <div className="panelHeading">
-                  <div><span className="panelKicker">Recent work</span><h2>Latest sessions</h2></div>
-                  <button className="textButton" onClick={() => setTab("Training")}>See all</button>
-                </div>
-
-                <div className="sessionCards">
-                  {data.activities.slice(0, 5).map(a => (
-                    <div className="sessionCard" key={a.id + a.date}>
-                      <div className="sessionSport">
-                        {/ride/i.test(a.sport) ? "BIKE" : /weight|strength/i.test(a.sport) ? "GYM" : "MOVE"}
-                      </div>
-                      <div className="sessionInfo">
-                        <b>{a.name}</b>
-                        <span>{dateOnly(a.date)} · {duration(a.movingTimeSec)}</span>
-                      </div>
-                      <div className="sessionLoad">
-                        <b>{fmt(a.load)}</b>
-                        <span>load</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-          )}
-
-          {tab === "Health" && (
-            <div className="stack">
-              <div className="chartGrid">
-                <section className="panel">
-                  <div className="panelHeading"><div><span className="panelKicker">Recovery</span><h2>HRV</h2></div></div>
-                  <Sparkline values={data.wellness.map(x => x.hrv)} dates={data.wellness.map(x => x.date)} label="HRV" unit=" ms" reference={data.aggregates.avgHrv7d} />
-                </section>
-
-                <section className="panel">
-                  <div className="panelHeading"><div><span className="panelKicker">Recovery</span><h2>Resting HR</h2></div></div>
-                  <Sparkline values={data.wellness.map(x => x.restingHr)} dates={data.wellness.map(x => x.date)} label="Resting HR" unit=" bpm" reference={data.aggregates.avgRestingHr7d} />
-                </section>
-
-                <section className="panel">
-                  <div className="panelHeading"><div><span className="panelKicker">Recovery</span><h2>Sleep duration</h2></div></div>
-                  <Sparkline values={data.wellness.map(x => x.sleepHours)} dates={data.wellness.map(x => x.date)} label="Sleep duration" unit=" h" reference={data.aggregates.avgSleepHours7d} />
-                </section>
-
-                <section className="panel">
-                  <div className="panelHeading"><div><span className="panelKicker">Body</span><h2>Weight</h2></div></div>
-                  <Sparkline values={data.wellness.map(x => x.weightKg)} dates={data.wellness.map(x => x.date)} label="Weight" unit=" kg" reference={data.aggregates.avgWeight7d} />
-                </section>
-
-                {data.wellness.some(x => typeof x.bodyFatPct === "number") && (
-                  <section className="panel">
-                    <h2>Body fat</h2>
-                    <Sparkline values={data.wellness.map(x => x.bodyFatPct)} dates={data.wellness.map(x => x.date)} label="Body fat" unit="%" />
-                  </section>
-                )}
-
-                {data.wellness.some(x => typeof x.muscleMassKg === "number") && (
-                  <section className="panel">
-                    <h2>Muscle mass</h2>
-                    <Sparkline values={data.wellness.map(x => x.muscleMassKg)} dates={data.wellness.map(x => x.date)} label="Muscle mass" unit=" kg" />
-                  </section>
-                )}
-              </div>
-
-              <section className="panel">
-                <div className="panelHeading">
-                  <div><span className="panelKicker">Garmin & Withings</span><h2>Wellness metrics</h2></div>
-                </div>
-
-                <div className="extras">
-                  <div><span>Body Battery</span><b>{fmt(latestWellness?.bodyBattery)}</b></div>
-                  <div><span>Stress</span><b>{fmt(latestWellness?.stress)}</b></div>
-                  <div><span>SpO₂</span><b>{fmt(latestWellness?.spo2, 1)}</b></div>
-                  <div><span>Respiration</span><b>{fmt(latestWellness?.respiration, 1)}</b></div>
-                </div>
-
-                {(data.sources.withings === "connected" || data.wellness.some(x => x.bodyFatPct != null || x.muscleMassKg != null)) && (
-                  <>
-                    <h3>Withings body composition</h3>
-                    <div className="extras">
-                      <div><span>Body fat</span><b>{fmt(data.current.bodyFatPct, 1)}%</b></div>
-                      <div><span>Fat mass</span><b>{fmt(data.current.fatMassKg, 1)} kg</b></div>
-                      <div><span>Muscle mass</span><b>{fmt(data.current.muscleMassKg, 1)} kg</b></div>
-                      <div><span>Bone mass</span><b>{fmt(data.current.boneMassKg, 1)} kg</b></div>
-                    </div>
-                  </>
-                )}
-
-                {data.latestHealthExtras.length > 0 && (
-                  <div className="extras spaceTop">
-                    {data.latestHealthExtras.map(x => (
-                      <div key={x.key}>
-                        <span>{x.key}</span>
-                        <b>{String(x.value ?? "—")}</b>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section className="panel">
-                <div className="panelHeading"><div><span className="panelKicker">History</span><h2>Daily health data</h2></div></div>
-                <HealthTable rows={data.wellness} />
-              </section>
-            </div>
-          )}
-
-          {tab === "Training" && (
-            <section className="panel">
-              <div className="panelHeading"><div><span className="panelKicker">Sessions</span><h2>Training history</h2></div></div>
-              <div className="tableWrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th><th>Sport</th><th>Session</th><th>Time</th><th>Distance</th><th>Load</th>
-                      <th>HR</th><th>Power</th><th>NP</th><th>IF</th><th>Cadence</th><th>Drift</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.activities.map(a => (
-                      <tr key={a.id + a.date}>
-                        <td>{dateOnly(a.date)}</td>
-                        <td>{a.sport}</td>
-                        <td>{a.name}</td>
-                        <td>{duration(a.movingTimeSec)}</td>
-                        <td>{distance(a.distanceM)}</td>
-                        <td>{fmt(a.load)}</td>
-                        <td>{fmt(a.avgHr)}/{fmt(a.maxHr)}</td>
-                        <td>{fmt(a.avgPower)} W</td>
-                        <td>{fmt(a.normalizedPower)} W</td>
-                        <td>{fmt(a.intensityFactor, 2)}</td>
-                        <td>{fmt(a.cadence)}</td>
-                        <td>{fmt(a.decouplingPct, 1)}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-
-          {tab === "Cycling" && (
-            <div className="chartGrid">
-              <section className="panel">
-                <div className="panelHeading">
-                  <div><span className="panelKicker">Cycling</span><h2>Summary</h2></div>
-                  <span className="badge">{fmt(data.current.ftp)} W FTP</span>
-                </div>
-
-                <div className="microStats">
-                  <div><b>{rides.length}</b><span>rides in window</span></div>
-                  <div><b>{data.aggregates.rideSessions28d}</b><span>rides · 28d</span></div>
-                  <div><b>{fmt(data.aggregates.bikeHours28d, 1)}h</b><span>bike time · 28d</span></div>
-                </div>
-
-                <h3>Average power trend</h3>
-                <Sparkline
-                  values={[...rides].reverse().map(x => x.avgPower)}
-                  dates={[...rides].reverse().map(x => dateOnly(x.date))}
-                  label="Average power"
-                  unit=" W"
-                />
-
-                <h3>Normalized power trend</h3>
-                <Sparkline
-                  values={[...rides].reverse().map(x => x.normalizedPower)}
-                  dates={[...rides].reverse().map(x => dateOnly(x.date))}
-                  label="Normalized power"
-                  unit=" W"
-                />
-              </section>
-
-              <section className="panel">
-                <div className="panelHeading"><div><span className="panelKicker">Cycling</span><h2>Recent rides</h2></div></div>
-                {rides.slice(0, 12).map(a => (
-                  <div className="rowCard" key={a.id + a.date}>
-                    <div>
-                      <b>{a.name}</b>
-                      <span>{dateOnly(a.date)} · {duration(a.movingTimeSec)} · {distance(a.distanceM)}</span>
-                    </div>
-                    <div>{fmt(a.avgPower)} / {fmt(a.normalizedPower)} W</div>
-                  </div>
-                ))}
-              </section>
-            </div>
-          )}
-
-          {tab === "Calendar" && (
-            <section className="panel">
-              <div className="panelHeading"><div><span className="panelKicker">Plan</span><h2>Upcoming sessions</h2></div></div>
-
-              {data.planned.length ? (
-                <div className="tableWrap">
-                  <table>
-                    <thead>
-                      <tr><th>Date</th><th>Name</th><th>Type</th><th>Duration</th><th>Load</th><th>Description</th></tr>
-                    </thead>
-                    <tbody>
-                      {data.planned.map(p => (
-                        <tr key={p.id + p.start}>
-                          <td>{dateOnly(p.start)}</td>
-                          <td>{p.name}</td>
-                          <td>{p.type || p.category || "—"}</td>
-                          <td>{duration(p.movingTimeSec)}</td>
-                          <td>{fmt(p.load)}</td>
-                          <td className="desc">{p.description || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : <div className="empty">No planned events returned.</div>}
-            </section>
-          )}
-
-          {tab === "Goals & Rules" && (
-            <div className="chartGrid">
-              <section className="panel">
-                <div className="panelHeading"><div><span className="panelKicker">Direction</span><h2>Goals</h2></div></div>
-                {data.stas?.goals?.length
-                  ? data.stas.goals.map((g, i) => <pre className="context" key={i}>{JSON.stringify(g, null, 2)}</pre>)
-                  : <div className="empty">No STAS goals snapshot.</div>}
-              </section>
-
-              <section className="panel">
-                <div className="panelHeading"><div><span className="panelKicker">Guardrails</span><h2>Rules</h2></div></div>
-                {data.stas?.rules?.length
-                  ? <ul>{data.stas.rules.map((r, i) => <li key={i}>{r}</li>)}</ul>
-                  : <div className="empty">No STAS rules snapshot.</div>}
-
-                <h2 className="spaceTop">Strategy</h2>
-                <div className="strategy">{data.stas?.strategy || "No STAS strategy snapshot."}</div>
-              </section>
-            </div>
-          )}
-
-          {tab === "Data" && (
-            <div className="chartGrid">
-              <section className="panel">
-                <div className="panelHeading"><div><span className="panelKicker">Connections</span><h2>Source coverage</h2></div></div>
-
-                <div className="source"><b>Intervals.icu</b><span>{data.sources.intervals ? "Connected" : "Unavailable"}</span></div>
-                <div className="source"><b>STAS context</b><span>{data.sources.stasContext}</span></div>
-                <div className="source"><b>Direct Garmin provider</b><span>{data.sources.garminDirect ? "Connected" : "Optional / not configured"}</span></div>
-                <div className="source"><b>Withings</b><span>{data.sources.withings.replaceAll("_", " ")}</span></div>
-
-                {data.sources.withings !== "connected" && (
-                  <a className="connectButton" href="/api/withings/connect">Connect Withings</a>
-                )}
-
-                {data.sources.withings === "connected" && (
-                  <button
-                    className="secondaryButton"
-                    onClick={async () => {
-                      await fetch("/api/withings/disconnect", { method: "POST" });
-                      await load();
-                    }}
-                  >
-                    Disconnect Withings
-                  </button>
-                )}
-
-                <p className="muted">
-                  Garmin wellness is read through Intervals when available. Withings is preferred for weight/body composition.
-                </p>
-              </section>
-
-              <section className="panel">
-                <div className="panelHeading"><div><span className="panelKicker">Diagnostics</span><h2>Loaded data</h2></div></div>
-
-                {data.sources.notes.length
-                  ? <ul>{data.sources.notes.map((n, i) => <li key={i}>{n}</li>)}</ul>
-                  : <div className="okText">No source errors reported.</div>}
-
-                <div className="microStats spaceTop">
-                  <div><b>{data.activities.length}</b><span>activities</span></div>
-                  <div><b>{data.wellness.length}</b><span>wellness days</span></div>
-                  <div><b>{data.planned.length}</b><span>planned events</span></div>
-                </div>
-              </section>
-            </div>
-          )}
-        </>
-      )}
-    </main>
-  );
+    <nav className="bottomNav">{tabs.map(t=><button key={t.key} className={tab===t.key?"active":""} onClick={()=>setTab(t.key)}><span>{t.icon}</span><b>{t.label}</b></button>)}</nav>
+  </main>;
 }
