@@ -129,7 +129,7 @@ export default function Dashboard(){
       <section className="card"><div className="title"><div><small>RECOVERY</small><h3>HRV trend</h3></div></div><Sparkline values={data.wellness.map(x=>x.hrv)} dates={data.wellness.map(x=>x.date)} label="HRV" unit=" ms" reference={data.aggregates.avgHrv7d}/></section>
       <section className="card"><div className="title"><div><small>RECOVERY</small><h3>Resting HR</h3></div></div><Sparkline values={data.wellness.map(x=>x.restingHr)} dates={data.wellness.map(x=>x.date)} label="Resting HR" unit=" bpm" reference={data.aggregates.avgRestingHr7d}/></section>
       <section className="card"><div className="title"><div><small>SLEEP</small><h3>Sleep duration</h3></div></div><Sparkline values={data.wellness.map(x=>x.sleepHours)} dates={data.wellness.map(x=>x.date)} label="Sleep" unit=" h" reference={data.aggregates.avgSleepHours7d}/></section>
-      <section className="card"><div className="title"><div><small>BODY</small><h3>Weight</h3></div></div><Sparkline values={data.wellness.map(x=>x.weightKg)} dates={data.wellness.map(x=>x.date)} label="Weight" unit=" kg" reference={data.aggregates.avgWeight7d}/></section>
+      <section className="card"><div className="title"><div><small>BODY</small><h3>Weight</h3></div></div><Sparkline values={data.wellness.map(x=>x.weightKg)} dates={data.wellness.map(x=>x.date)} label="Weight" unit=" kg" reference={data.aggregates.avgWeight7d} connectGaps smooth/></section>
     </section>}
 
     {tab==="Training"&&<section className="screen">

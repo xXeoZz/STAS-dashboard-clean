@@ -110,3 +110,12 @@ For activity-level FTP fallback it reads the FTP value from the raw Intervals ac
 
 This specifically avoids the Vercel build error:
 `Property 'ftp' does not exist on type 'Activity'.`
+
+
+## v8.3 smooth sparse weight chart
+
+The weight chart now:
+- connects only real weigh-in points across missing days
+- uses a smooth curve between those observed points
+- keeps the actual date spacing
+- does not invent daily weight values
