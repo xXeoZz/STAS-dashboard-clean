@@ -127,7 +127,7 @@ export async function buildDashboard(days = 90): Promise<DashboardData> {
     fetchIntervalsAthlete(),
     fetchIntervalsWellness(oldest, newest),
     fetchIntervalsActivities(oldest, newest),
-    fetchIntervalsEvents(today, isoDate(new Date(Date.now() + 21 * 86400000))),
+    fetchIntervalsEvents(oldest, isoDate(new Date(Date.now() + 31 * 86400000))),
     fetchStasContext(),
     fetchOptionalGarminNormalized(),
     fetchWithingsWellness(oldest, today)

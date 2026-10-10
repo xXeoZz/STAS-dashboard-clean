@@ -151,3 +151,48 @@ The Daily Recovery card now supports historical navigation:
 - trailing 7-day HRV and RHR context calculated for the selected date
 - recovery score recalculated for the selected historical date
 - navigation only uses dates that actually contain recovery data
+
+
+# STAS Dashboard v9
+
+v9 is a decision-first cycling, health and training UI.
+
+## Today
+- historical Daily Recovery navigation
+- today's planned workout
+- monthly training report with color-coded Cycling / Strength / HIIT / Running / explicit Rest
+- weekly training summary
+- Fitness / Fatigue / Form context
+- body and health snapshot
+- recent sessions
+
+## Health
+- HRV, resting HR, sleep and weight trends
+- sparse data connected without inventing measurements
+- current wellness metrics
+
+## Training
+- 12-week load bars
+- 28-day training distribution
+- Fitness / Fatigue / Form
+- detailed recent session list
+
+## Cycling
+- FTP and W/kg
+- average and normalized power trends
+- endurance efficiency (average power / average HR on rides >=45 min)
+- aerobic decoupling trend
+- recent rides
+
+## Plan
+- upcoming sessions
+- goals
+- data-source status
+
+## Calendar semantics
+- completed workouts are solid
+- future/planned workouts are faded
+- Rest is only shown when explicitly recorded as rest/recovery/off
+- a blank historical day means no workout was recorded; it is not silently reclassified as rest
+
+All existing Intervals.icu, Garmin-via-Intervals and Withings provider code is preserved.
