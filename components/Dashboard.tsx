@@ -184,7 +184,7 @@ function MonthlyTrainingCalendar({
         }>
           <b>{cell.day}</b>
           <div className="kindDots">
-            {(cell.rest ? ["rest"] : kinds).slice(0,3).map((k,idx) =>
+            {(cell.rest ? (["rest"] as WorkoutKind[]) : kinds).slice(0,3).map((k,idx) =>
               <i key={`${k}-${idx}`} className={workoutKindMeta[k].className}/>
             )}
           </div>

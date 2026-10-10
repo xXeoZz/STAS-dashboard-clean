@@ -134,3 +134,9 @@ The Today screen now includes a monthly training report with:
 - completed sessions as solid markers
 - planned sessions as faded markers
 - multi-workout days shown with multiple color dots
+
+
+## v8.4.1 TypeScript fix
+
+Fixed calendar legend/dot rendering so the Rest fallback is explicitly typed as `WorkoutKind[]`.
+This resolves the Vercel build error where `workoutKindMeta[k]` was indexed by an inferred `string`.
