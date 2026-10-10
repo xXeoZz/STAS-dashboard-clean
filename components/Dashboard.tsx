@@ -39,8 +39,168 @@ function Schedule({planned}:{planned:DashboardData["planned"]}) {
   return <div className="schedule">{days.map((d,i)=><div key={d.iso} className={`${i===0?"today":""} ${d.has?"has":""}`}><span>{d.dow}</span><b>{d.day}</b><i/></div>)}</div>;
 }
 
+
+type WorkoutKind = "rest" | "hiit" | "strength" | "cycling" | "running" | "other";
+
+const workoutKindMeta: Record<WorkoutKind, { label: string; className: string }> = {
+  rest: { label: "Rest", className: "kindRest" },
+  hiit: { label: "HIIT", className: "kindHiit" },
+  strength: { label: "Strength", className: "kindStrength" },
+  cycling: { label: "Cycling", className: "kindCycling" },
+  running: { label: "Running", className: "kindRunning" },
+  other: { label: "Other", className: "kindOther" }
+};
+
+function workoutKind(sport?: string | null, name?: string | null): WorkoutKind {
+  const text = `${sport || ""} ${name || ""}`.toLowerCase();
+
+  if (/hiit|highintensity|crossfit|metcon|interval/.test(text)) return "hiit";
+  if (/weight|strength|weighttraining|gym|functional/.test(text)) return "strength";
+  if (/run|running|trailrun|treadmill/.test(text)) return "running";
+  if (/ride|cycling|bike|virtualride|ebike|indoorcycling/.test(text)) return "cycling";
+  return "other";
+}
+
+function MonthlyTrainingCalendar({
+  activities,
+  planned,
+  monthOffset,
+  onMonthOffset
+}: {
+  activities: DashboardData["activities"];
+  planned: DashboardData["planned"];
+  monthOffset: number;
+  onMonthOffset: (next: number) => void;
+}) {
+  const now = new Date();
+  const monthDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+
+  const monthLabel = monthDate.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric"
+  });
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const daysInMonth = lastDay.getDate();
+
+  // Monday-first calendar, matching the reference.
+  const mondayOffset = (firstDay.getDay() + 6) % 7;
+
+  const todayIso = new Date().toISOString().slice(0,10);
+
+  const activityKindsByDate = new Map<string, WorkoutKind[]>();
+  for (const a of activities) {
+    const iso = dateOnly(a.date);
+    const d = new Date(`${iso}T12:00:00`);
+    if (Number.isNaN(d.getTime()) || d.getFullYear() !== year || d.getMonth() !== month) continue;
+    const arr = activityKindsByDate.get(iso) || [];
+    const kind = workoutKind(a.sport, a.name);
+    if (!arr.includes(kind)) arr.push(kind);
+    activityKindsByDate.set(iso, arr);
+  }
+
+  const plannedKindsByDate = new Map<string, WorkoutKind[]>();
+  for (const p of planned) {
+    const iso = dateOnly(p.start);
+    const d = new Date(`${iso}T12:00:00`);
+    if (Number.isNaN(d.getTime()) || d.getFullYear() !== year || d.getMonth() !== month) continue;
+    const arr = plannedKindsByDate.get(iso) || [];
+    const kind = workoutKind(p.type, p.name);
+    if (!arr.includes(kind)) arr.push(kind);
+    plannedKindsByDate.set(iso, arr);
+  }
+
+  const priority: WorkoutKind[] = ["hiit", "strength", "running", "cycling", "other"];
+
+  const cells: Array<{ key: string; day?: number; iso?: string; kinds?: WorkoutKind[]; plannedOnly?: boolean; rest?: boolean }> = [];
+  for (let i = 0; i < mondayOffset; i++) cells.push({ key: `blank-start-${i}` });
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = new Date(year, month, day, 12).toISOString().slice(0,10);
+    const actual = activityKindsByDate.get(iso) || [];
+    const futurePlan = plannedKindsByDate.get(iso) || [];
+    const kinds = actual.length ? actual : futurePlan;
+    const isPastOrToday = iso <= todayIso;
+    const rest = isPastOrToday && actual.length === 0;
+
+    cells.push({
+      key: iso,
+      day,
+      iso,
+      kinds,
+      plannedOnly: actual.length === 0 && futurePlan.length > 0,
+      rest
+    });
+  }
+
+  while (cells.length % 7 !== 0) cells.push({ key: `blank-end-${cells.length}` });
+
+  return <div className="monthlyCalendar">
+    <div className="monthHeader">
+      <div>
+        <small>MONTHLY REPORT</small>
+        <h3>Training calendar</h3>
+      </div>
+      <div className="monthControls">
+        <button onClick={() => onMonthOffset(monthOffset - 1)} aria-label="Previous month">‹</button>
+        <span>{monthLabel}</span>
+        <button onClick={() => onMonthOffset(monthOffset + 1)} aria-label="Next month" disabled={monthOffset >= 0}>›</button>
+      </div>
+    </div>
+
+    <div className="calendarLegend">
+      {(["rest","hiit","strength","cycling","running"] as WorkoutKind[]).map(k =>
+        <span key={k}><i className={workoutKindMeta[k].className}/>{workoutKindMeta[k].label}</span>
+      )}
+    </div>
+
+    <div className="weekdayRow">
+      {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => <span key={d}>{d}</span>)}
+    </div>
+
+    <div className="monthGrid">
+      {cells.map(cell => {
+        if (!cell.day || !cell.iso) return <div className="monthCell blank" key={cell.key}/>;
+
+        const kinds = cell.kinds || [];
+        const primary = cell.rest
+          ? "rest"
+          : priority.find(k => kinds.includes(k)) || (kinds[0] || "other");
+
+        const classes = [
+          "monthCell",
+          workoutKindMeta[primary].className,
+          cell.iso === todayIso ? "isToday" : "",
+          cell.plannedOnly ? "plannedOnly" : ""
+        ].filter(Boolean).join(" ");
+
+        return <div className={classes} key={cell.key} title={
+          cell.rest
+            ? `${cell.iso} · Rest`
+            : `${cell.iso} · ${kinds.map(k => workoutKindMeta[k].label).join(", ")}${cell.plannedOnly ? " (planned)" : ""}`
+        }>
+          <b>{cell.day}</b>
+          <div className="kindDots">
+            {(cell.rest ? ["rest"] : kinds).slice(0,3).map((k,idx) =>
+              <i key={`${k}-${idx}`} className={workoutKindMeta[k].className}/>
+            )}
+          </div>
+        </div>;
+      })}
+    </div>
+
+    <div className="calendarNote">
+      Solid = completed · faded = planned · past blank days = rest
+    </div>
+  </div>;
+}
+
 export default function Dashboard(){
   const [tab,setTab]=useState<Tab>("Today");
+  const [monthOffset,setMonthOffset]=useState(0);
   const [days,setDays]=useState(90);
   const [data,setData]=useState<DashboardData|null>(null);
   const [error,setError]=useState<string|null>(null);
@@ -111,6 +271,15 @@ export default function Dashboard(){
           <Metric icon="●" label="Resting HR" value={`${fmt(data.current.restingHr)} bpm`} sub={`7d avg ${fmt(data.aggregates.avgRestingHr7d,1)}`}/>
           <Metric icon="☾" label="Sleep" value={`${fmt(data.current.sleepHours,1)} h`} sub={`score ${fmt(data.current.sleepScore)}`}/>
         </div>
+      </section>
+
+      <section className="card calendarCard">
+        <MonthlyTrainingCalendar
+          activities={data.activities}
+          planned={data.planned}
+          monthOffset={monthOffset}
+          onMonthOffset={setMonthOffset}
+        />
       </section>
 
       <section className="card">

@@ -119,3 +119,18 @@ The weight chart now:
 - uses a smooth curve between those observed points
 - keeps the actual date spacing
 - does not invent daily weight values
+
+
+## v8.4 monthly training calendar
+
+The Today screen now includes a monthly training report with:
+- Rest days
+- HIIT
+- Strength
+- Cycling
+- Running
+- distinct colors and legend
+- previous-month navigation
+- completed sessions as solid markers
+- planned sessions as faded markers
+- multi-workout days shown with multiple color dots
