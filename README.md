@@ -140,3 +140,14 @@ The Today screen now includes a monthly training report with:
 
 Fixed calendar legend/dot rendering so the Rest fallback is explicitly typed as `WorkoutKind[]`.
 This resolves the Vercel build error where `workoutKindMeta[k]` was indexed by an inferred `string`.
+
+
+## v8.5 recovery history navigation
+
+The Daily Recovery card now supports historical navigation:
+- previous / next recovery day buttons
+- Latest button
+- historical HRV, RHR and sleep values
+- trailing 7-day HRV and RHR context calculated for the selected date
+- recovery score recalculated for the selected historical date
+- navigation only uses dates that actually contain recovery data

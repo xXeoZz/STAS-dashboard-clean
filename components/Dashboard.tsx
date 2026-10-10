@@ -201,6 +201,7 @@ function MonthlyTrainingCalendar({
 export default function Dashboard(){
   const [tab,setTab]=useState<Tab>("Today");
   const [monthOffset,setMonthOffset]=useState(0);
+  const [selectedDate,setSelectedDate]=useState<string|null>(null);
   const [days,setDays]=useState(90);
   const [data,setData]=useState<DashboardData|null>(null);
   const [error,setError]=useState<string|null>(null);
@@ -222,13 +223,89 @@ export default function Dashboard(){
 
   const rides=useMemo(()=>data?.activities.filter(isRide)||[],[data]);
 
+  const availableRecoveryDates = useMemo(() => {
+    if (!data) return [];
+    return data.wellness
+      .filter(w => w.date && (
+        typeof w.hrv === "number" ||
+        typeof w.restingHr === "number" ||
+        typeof w.sleepHours === "number" ||
+        typeof w.sleepScore === "number"
+      ))
+      .map(w => w.date)
+      .sort((a,b) => a.localeCompare(b));
+  }, [data]);
+
+  useEffect(() => {
+    if (!availableRecoveryDates.length) return;
+    if (!selectedDate || !availableRecoveryDates.includes(selectedDate)) {
+      setSelectedDate(availableRecoveryDates[availableRecoveryDates.length - 1]);
+    }
+  }, [availableRecoveryDates, selectedDate]);
+
+  const selectedWellness = useMemo(() => {
+    if (!data || !selectedDate) return null;
+    return data.wellness.find(w => w.date === selectedDate) || null;
+  }, [data, selectedDate]);
+
+  const selectedDateIndex = selectedDate ? availableRecoveryDates.indexOf(selectedDate) : -1;
+
+  const selected7dRows = useMemo(() => {
+    if (!data || !selectedDate) return [];
+    const end = new Date(`${selectedDate}T12:00:00`);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 6);
+
+    return data.wellness.filter(w => {
+      const d = new Date(`${w.date}T12:00:00`);
+      return d >= start && d <= end;
+    });
+  }, [data, selectedDate]);
+
+  const histAvg = (vals: Array<number | null | undefined>) => {
+    const clean = vals.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    return clean.length ? clean.reduce((a,b)=>a+b,0) / clean.length : null;
+  };
+
+  const selectedHrv7d = histAvg(selected7dRows.map(w => w.hrv));
+  const selectedRhr7d = histAvg(selected7dRows.map(w => w.restingHr));
+
+  const selectedSleepScore = selectedWellness
+    ? (typeof selectedWellness.sleepScore === "number"
+        ? Math.round(clamp(selectedWellness.sleepScore))
+        : (typeof selectedWellness.sleepHours === "number"
+            ? Math.round(clamp((selectedWellness.sleepHours / 8) * 85, 45, 100))
+            : null))
+    : null;
+
+  const selectedHrvScore =
+    selectedWellness && typeof selectedWellness.hrv === "number" && typeof selectedHrv7d === "number" && selectedHrv7d > 0
+      ? Math.round(clamp((selectedWellness.hrv / selectedHrv7d) * 85, 45, 100))
+      : null;
+
+  const selectedRhrScore =
+    selectedWellness && typeof selectedWellness.restingHr === "number" && typeof selectedRhr7d === "number" && selectedWellness.restingHr > 0
+      ? Math.round(clamp((selectedRhr7d / selectedWellness.restingHr) * 85, 45, 100))
+      : null;
+
+  const selectedRecoveryBits = [selectedSleepScore, selectedHrvScore, selectedRhrScore]
+    .filter((x): x is number => x !== null);
+
+  const selectedRecovery = selectedRecoveryBits.length
+    ? Math.round(selectedRecoveryBits.reduce((a,b)=>a+b,0)/selectedRecoveryBits.length)
+    : null;
+
+  const selectedDateLabel = selectedDate
+    ? new Date(`${selectedDate}T12:00:00`).toLocaleDateString(undefined, {
+        weekday: "short",
+        day: "numeric",
+        month: "short"
+      })
+    : "No data";
+
+
   if(!data) return <main className="appShell"><div className="loading"><div className="pulse"/><b>{error?"Could not load dashboard":"Loading your dashboard…"}</b>{error&&<span>{error}</span>}</div></main>;
 
-  const sleepScore=typeof data.current.sleepScore==="number"?Math.round(clamp(data.current.sleepScore)):null;
-  const hrvScore=data.current.hrv&&data.aggregates.avgHrv7d?Math.round(clamp((data.current.hrv/data.aggregates.avgHrv7d)*85,45,100)):null;
-  const rhrScore=data.current.restingHr&&data.aggregates.avgRestingHr7d?Math.round(clamp((data.aggregates.avgRestingHr7d/data.current.restingHr)*85,45,100)):null;
-  const scores=[sleepScore,hrvScore,rhrScore].filter((x):x is number=>x!==null);
-  const recovery=scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):null;
   const greeting=new Intl.DateTimeFormat(undefined,{weekday:"short",day:"2-digit",month:"short"}).format(new Date());
 
   return <main className="appShell">
@@ -242,14 +319,45 @@ export default function Dashboard(){
 
     {tab==="Today"&&<section className="screen">
       <section className="heroCard">
-        <small>DAILY RECOVERY</small>
-        <Donut score={recovery}/>
-        <h2>{recovery!=null&&recovery>=80?"Ready for quality work":recovery!=null&&recovery>=65?"Moderate readiness":"Keep it controlled"}</h2>
-        <p>Sleep, HRV and resting heart rate combined as context — not an automatic training verdict.</p>
+        <div className="recoveryTop">
+          <div>
+            <small>DAILY RECOVERY</small>
+            <b>{selectedDateLabel}</b>
+          </div>
+          <div className="dateNav">
+            <button
+              onClick={() => {
+                if (selectedDateIndex > 0) setSelectedDate(availableRecoveryDates[selectedDateIndex - 1]);
+              }}
+              disabled={selectedDateIndex <= 0}
+              aria-label="Previous recovery day"
+            >‹</button>
+            <button
+              className="todayButton"
+              onClick={() => {
+                if (availableRecoveryDates.length) setSelectedDate(availableRecoveryDates[availableRecoveryDates.length - 1]);
+              }}
+              disabled={selectedDateIndex === availableRecoveryDates.length - 1}
+            >Latest</button>
+            <button
+              onClick={() => {
+                if (selectedDateIndex >= 0 && selectedDateIndex < availableRecoveryDates.length - 1) {
+                  setSelectedDate(availableRecoveryDates[selectedDateIndex + 1]);
+                }
+              }}
+              disabled={selectedDateIndex < 0 || selectedDateIndex >= availableRecoveryDates.length - 1}
+              aria-label="Next recovery day"
+            >›</button>
+          </div>
+        </div>
+
+        <Donut score={selectedRecovery}/>
+        <h2>{selectedRecovery!=null&&selectedRecovery>=80?"Ready for quality work":selectedRecovery!=null&&selectedRecovery>=65?"Moderate readiness":"Keep it controlled"}</h2>
+        <p>Sleep, HRV and resting heart rate for this date, compared with its own trailing 7-day context.</p>
         <div className="signals">
-          <div><span>♥ HRV</span><b>{fmt(data.current.hrv)} ms</b></div>
-          <div><span>● RHR</span><b>{fmt(data.current.restingHr)} bpm</b></div>
-          <div><span>☾ Sleep</span><b>{fmt(data.current.sleepHours,1)} h</b></div>
+          <div><span>♥ HRV</span><b>{fmt(selectedWellness?.hrv)} ms</b><small>7d {fmt(selectedHrv7d,1)}</small></div>
+          <div><span>● RHR</span><b>{fmt(selectedWellness?.restingHr)} bpm</b><small>7d {fmt(selectedRhr7d,1)}</small></div>
+          <div><span>☾ Sleep</span><b>{fmt(selectedWellness?.sleepHours,1)} h</b><small>score {fmt(selectedWellness?.sleepScore)}</small></div>
         </div>
       </section>
 
