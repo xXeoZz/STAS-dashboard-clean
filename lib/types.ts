@@ -76,18 +76,12 @@ export type StasContext = {
   notes?: string[];
 };
 
-export type GarminNormalizedResponse = {
-  wellness?: WellnessDay[];
-  latest?: Record<string, unknown>;
-};
-
 export type DashboardData = {
   generatedAt: string;
   days: number;
   sources: {
     intervals: boolean;
     stasContext: "local" | "remote" | "unavailable";
-    garminDirect: boolean;
     withings: "connected" | "not_configured" | "needs_authorization" | "error";
     notes: string[];
   };

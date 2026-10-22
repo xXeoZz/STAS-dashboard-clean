@@ -98,11 +98,20 @@ function mapActivity(row: Record<string, unknown>): Activity {
     load: firstNum(row, ["icu_training_load", "training_load", "load"]),
     avgHr: firstNum(row, ["average_heartrate", "avg_hr", "averageHr"]),
     maxHr: firstNum(row, ["max_heartrate", "max_hr", "maxHr"]),
-    avgPower: firstNum(row, ["average_watts", "avg_watts", "averagePower"]),
-    normalizedPower: firstNum(row, ["icu_weighted_avg_watts", "normalized_power", "weighted_average_watts"]),
-    intensityFactor: firstNum(row, ["icu_intensity", "intensity_factor", "if"]),
-    cadence: firstNum(row, ["average_cadence", "cadence"]),
-    decouplingPct: firstNum(row, ["icu_aerobic_decoupling", "aerobic_decoupling", "decoupling"]),
+    avgPower: firstNum(row, [
+      "average_watts", "avg_watts", "averagePower", "avgPower", "average_power",
+      "icu_average_watts", "watts", "power"
+    ]),
+    normalizedPower: firstNum(row, [
+      "icu_weighted_avg_watts", "normalized_power", "weighted_average_watts",
+      "normalizedPower", "weightedAvgWatts", "np"
+    ]),
+    intensityFactor: firstNum(row, ["icu_intensity", "intensity_factor", "if", "intensityFactor"]),
+    cadence: firstNum(row, ["average_cadence", "cadence", "avg_cadence", "averageCadence"]),
+    decouplingPct: firstNum(row, [
+      "icu_aerobic_decoupling", "aerobic_decoupling", "decoupling",
+      "decouplingPct", "aerobicDecoupling"
+    ]),
     calories: firstNum(row, ["calories"]),
     elevationGainM: firstNum(row, ["total_elevation_gain", "elevation_gain", "elevationGain"]),
     fitness,

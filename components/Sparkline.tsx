@@ -63,7 +63,7 @@ export default function Sparkline({
     .map((v,i) => ({ v, i, date: dates?.[i] }))
     .filter((p): p is {v:number;i:number;date:string|undefined} => p.v !== null);
 
-  if (points.length < 2) return <div className="empty">Not enough data</div>;
+  if (points.length < 2) return <div className="empty chartEmpty">No usable {label.toLowerCase()} data for this period.</div>;
 
   const vals = points.map(p => p.v);
   const dataMin = Math.min(...vals);

@@ -1,15 +1,16 @@
-# Clean deployment
+# Deploy STAS Dashboard v9.3
 
-Recommended approach:
+Recommended GitHub Desktop workflow:
 
-1. Use a fresh private GitHub repository if possible.
-2. Upload only the files/folders from this package.
-3. Do not upload old loose repair files.
-4. In Vercel, Root Directory should be repository root / blank.
-5. Add environment variables.
-6. Deploy.
+1. Unzip `stas-dashboard-v9.3.zip`.
+2. In GitHub Desktop choose **Repository -> Show in Explorer**.
+3. In the repository folder, replace the visible project files/folders with the contents of the unzipped v9.3 package.
+4. Leave the hidden `.git` folder untouched.
+5. Return to GitHub Desktop.
+6. Check the changed files.
+7. Summary: `Update dashboard to v9.3`
+8. Click **Commit to main**.
+9. Click **Push origin**.
+10. Let Vercel deploy automatically.
 
-After deployment:
-- `/api/diagnostics` should report Intervals authentication.
-- `/api/withings/diagnostics` should report Withings connection and weight rows.
-- `/api/dashboard?days=90` should show current FTP and latest weight.
+The LF/CRLF warning in GitHub Desktop is harmless.

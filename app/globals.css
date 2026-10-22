@@ -884,3 +884,811 @@ a{color:inherit}
   .weekNumbers{grid-template-columns:1fr 1fr}
   .performanceNumbers,.simpleMetrics,.insightGrid{grid-template-columns:1fr 1fr}
 }
+
+
+/* =========================================================
+   STAS v9.3 — premium wellness visual pass
+   Calm hierarchy, editorial spacing, softer surfaces
+   ========================================================= */
+
+:root{
+  --bg:#07100c;
+  --panel:#0d1712;
+  --panel2:#101c16;
+  --panel3:#15241c;
+  --line:rgba(164,210,190,.10);
+  --lineStrong:rgba(164,210,190,.18);
+  --text:#f5f8f5;
+  --muted:#8aa096;
+  --muted2:#657c71;
+  --mint:#67e6b8;
+  --mintSoft:#183c30;
+  --shadow:0 24px 70px rgba(0,0,0,.25);
+}
+html{background:#07100c}
+body{
+  background:
+    radial-gradient(circle at 18% -8%,rgba(103,230,184,.09),transparent 32%),
+    radial-gradient(circle at 88% 18%,rgba(106,155,255,.045),transparent 28%),
+    linear-gradient(180deg,#07100c 0%,#08110d 46%,#07100c 100%);
+}
+.appShell{
+  width:min(100%,1180px);
+  padding-left:18px;
+  padding-right:18px;
+}
+.topBar{
+  padding-top:20px;
+  padding-bottom:16px;
+  background:linear-gradient(180deg,rgba(7,16,12,.985),rgba(7,16,12,.92),rgba(7,16,12,0));
+}
+.topBar h1{
+  font-size:21px;
+  letter-spacing:.16em;
+  font-weight:750;
+}
+.topBar h1 em{
+  padding-left:4px;
+  color:#8eecc9;
+}
+.topActions select,.topActions button{
+  background:rgba(16,29,23,.82);
+  border-color:rgba(164,210,190,.14);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+.screen{gap:16px}
+.heroPanel,.card,.weeklyReviewCard,.insightCard,.statusCard,.performanceCard{
+  border:1px solid rgba(164,210,190,.095);
+  background:
+    linear-gradient(180deg,rgba(15,28,21,.96),rgba(10,20,15,.98));
+  box-shadow:
+    0 24px 70px rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.025);
+}
+.heroPanel,.weeklyReviewCard,.card,.insightCard,.statusCard,.performanceCard{
+  border-radius:28px;
+}
+.heroPanel{
+  padding:22px;
+  background:
+    radial-gradient(circle at 10% 0%,rgba(103,230,184,.15),transparent 35%),
+    linear-gradient(145deg,#102c21 0%,#0d1913 62%,#0a140f 100%);
+}
+.heroCopy h1{
+  max-width:500px;
+  font-size:28px;
+  letter-spacing:-.045em;
+}
+.heroCopy p{
+  max-width:560px;
+  font-size:11px;
+  line-height:1.6;
+}
+.scoreOrb{
+  width:168px;
+  height:168px;
+  background:conic-gradient(#67e6b8 var(--score),rgba(109,149,132,.26) var(--score),rgba(88,112,101,.14) 100%);
+  box-shadow:0 16px 50px rgba(0,0,0,.28),0 0 50px rgba(103,230,184,.055);
+}
+.scoreOrb:before{
+  background:radial-gradient(circle at 44% 26%,#17382b,#0d1812 72%);
+}
+.scoreOrb b{font-size:46px}
+.signalStrip{
+  margin-top:2px;
+  border-top-color:rgba(255,255,255,.055);
+  border-bottom-color:rgba(255,255,255,.055);
+}
+.signalStrip>div{padding:14px}
+.signalStrip b{font-size:17px}
+.sectionHeading h2,.weeklyReviewTop h2,.performanceCard h2{
+  font-size:20px;
+  letter-spacing:-.035em;
+}
+.kicker,.eyebrow,.sectionHeading small{
+  color:#83a293;
+  letter-spacing:.16em;
+}
+.subtleTag,.reviewBadge,.actionBadge{
+  border-color:rgba(142,236,201,.18);
+  background:rgba(22,54,42,.62);
+  color:#a8d9c6;
+}
+
+/* Weekly Review */
+.weeklyReviewCard{
+  padding:22px;
+  overflow:hidden;
+  position:relative;
+  background:
+    radial-gradient(circle at 100% 0%,rgba(103,230,184,.075),transparent 34%),
+    linear-gradient(145deg,rgba(15,28,21,.98),rgba(10,19,15,.99));
+}
+.weeklyReviewCard:after{
+  content:"";
+  position:absolute;
+  width:180px;
+  height:180px;
+  border-radius:50%;
+  right:-100px;
+  bottom:-120px;
+  background:radial-gradient(circle,rgba(103,230,184,.07),transparent 66%);
+  pointer-events:none;
+}
+.weeklyReviewTop{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+}
+.weeklyReviewTop h2{
+  margin:3px 0 0;
+  font-size:23px;
+}
+.reviewBadge{
+  border:1px solid rgba(142,236,201,.15);
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:8px;
+  white-space:nowrap;
+}
+.weeklyReviewStats{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  margin-top:18px;
+  padding:14px 0;
+  border-top:1px solid rgba(164,210,190,.09);
+  border-bottom:1px solid rgba(164,210,190,.09);
+}
+.weeklyReviewStats>div{
+  padding:0 13px;
+  border-left:1px solid rgba(164,210,190,.08);
+}
+.weeklyReviewStats>div:first-child{
+  padding-left:0;
+  border-left:0;
+}
+.weeklyReviewStats b{
+  display:block;
+  font-size:24px;
+  line-height:1;
+  letter-spacing:-.045em;
+}
+.weeklyReviewStats span{
+  display:block;
+  margin-top:5px;
+  color:#6f897c;
+  font-size:8px;
+}
+.reviewNarrative{
+  display:grid;
+  gap:12px;
+  margin-top:15px;
+}
+.reviewNarrative>div{
+  display:grid;
+  grid-template-columns:82px 1fr;
+  gap:10px;
+  align-items:start;
+}
+.reviewNarrative span{
+  color:#789689;
+  font-size:8px;
+  text-transform:uppercase;
+  letter-spacing:.11em;
+  font-weight:800;
+}
+.reviewNarrative p{
+  margin:0;
+  color:#c4d2cb;
+  font-size:10px;
+  line-height:1.48;
+}
+.reviewFooter{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+  margin-top:15px;
+  padding-top:12px;
+  border-top:1px solid rgba(164,210,190,.09);
+  color:#71877b;
+  font-size:8px;
+}
+.reviewFooter b{
+  color:#dce7e1;
+  font-size:11px;
+}
+
+/* Less "dashboard", more calm panels */
+.weekNumbers>div,
+.simpleMetrics>div,
+.insightGrid>div,
+.performanceNumbers>div,
+.monthTotals>div{
+  background:rgba(255,255,255,.015);
+  border-color:rgba(164,210,190,.085);
+}
+.insightGrid>div,.simpleMetrics>div,.performanceNumbers>div{
+  border-radius:18px;
+}
+.insightGrid b,.performanceNumbers b{letter-spacing:-.045em}
+.balanceTrack{
+  height:7px;
+  background:rgba(160,200,180,.09);
+}
+.balanceTrack>i{
+  background:linear-gradient(90deg,#3f9675,#70e7bb);
+}
+.calendarWeekdays span{color:#637d70}
+.dayCell{
+  border-color:rgba(164,210,190,.075);
+  background:rgba(255,255,255,.012);
+  border-radius:14px;
+}
+.todayCell{
+  border-color:#67e6b8;
+  box-shadow:0 0 0 1px rgba(103,230,184,.16),0 0 30px rgba(103,230,184,.04);
+}
+.segmented{
+  background:rgba(5,12,9,.62);
+  border-color:rgba(164,210,190,.09);
+}
+.segmented button.active{
+  background:rgba(103,230,184,.12);
+  color:#9af0d0;
+}
+.spark{
+  background:rgba(4,11,8,.48);
+  border-color:rgba(164,210,190,.075);
+  border-radius:20px;
+}
+.chartEmpty{
+  min-height:220px;
+  display:grid;
+  place-items:center;
+  border:1px dashed rgba(164,210,190,.12);
+  border-radius:20px;
+  color:#71887d;
+  background:rgba(4,11,8,.32);
+  font-size:10px;
+}
+.activityRow{
+  padding-top:13px;
+  padding-bottom:13px;
+  border-top-color:rgba(164,210,190,.075);
+}
+.activityRow>div:nth-child(2)>b{font-size:12px}
+.activityRow>div:nth-child(2)>span{font-size:8px}
+.statusTriplet{
+  border-color:rgba(164,210,190,.08);
+  border-radius:19px;
+}
+.statusTriplet>div{
+  background:rgba(255,255,255,.012);
+  border-left-color:rgba(164,210,190,.08);
+}
+.loadBars{
+  background:rgba(4,11,8,.38);
+  border-color:rgba(164,210,190,.08);
+  border-radius:20px;
+}
+.loadBar{
+  background:linear-gradient(180deg,#78e9bf,#2e795c);
+}
+.bottomNav{
+  bottom:12px;
+  width:min(calc(100% - 26px),650px);
+  padding:7px;
+  border-color:rgba(164,210,190,.13);
+  background:rgba(8,17,12,.88);
+  box-shadow:0 24px 70px rgba(0,0,0,.38);
+}
+.bottomNav button{
+  padding:9px 4px;
+  border-radius:17px;
+}
+.bottomNav button.active{
+  background:rgba(103,230,184,.11);
+  color:#79e8be;
+}
+.contextNote{
+  color:#71887c;
+  line-height:1.55;
+}
+
+/* Home layout prioritizes recovery + review */
+@media(min-width:980px){
+  .homeScreen{
+    grid-template-columns:1.05fr .95fr;
+    align-items:stretch;
+  }
+  .homeScreen>.heroPanel{grid-column:1}
+  .homeScreen>.weeklyReviewCard{grid-column:2}
+  .homeScreen>.compactCard{grid-column:1}
+  .homeScreen>.monthCard{grid-column:2}
+}
+@media(max-width:760px){
+  .appShell{
+    padding-left:10px;
+    padding-right:10px;
+  }
+  .weeklyReviewStats{grid-template-columns:repeat(4,1fr)}
+  .reviewNarrative>div{
+    grid-template-columns:72px 1fr;
+  }
+}
+@media(max-width:520px){
+  .heroPanel,.weeklyReviewCard,.card,.insightCard,.statusCard,.performanceCard{
+    border-radius:22px;
+  }
+  .heroPanel,.weeklyReviewCard{padding:16px}
+  .weeklyReviewStats b{font-size:21px}
+  .weeklyReviewStats>div{padding:0 8px}
+  .reviewNarrative>div{
+    grid-template-columns:1fr;
+    gap:3px;
+  }
+}
+
+
+/* =========================================================
+   STAS v9.4 — mobile wellness app pass
+   Inspired by the supplied reference screenshots:
+   dark charcoal cards, three signal rings, strong white type,
+   compact activity stories, colored training accents.
+   ========================================================= */
+
+:root{
+  --zen-bg:#0a0e10;
+  --zen-card:#151b1e;
+  --zen-card2:#1b2226;
+  --zen-line:rgba(255,255,255,.07);
+  --zen-text:#f8fafb;
+  --zen-muted:#889399;
+  --zen-blue:#2f9cf4;
+  --zen-green:#52e783;
+  --zen-purple:#b95cf6;
+  --zen-orange:#ff8a27;
+  --zen-red:#ff5e63;
+}
+
+html{background:var(--zen-bg)}
+body{
+  background:
+    radial-gradient(circle at 50% -12%,rgba(47,156,244,.055),transparent 28%),
+    linear-gradient(180deg,#090d0f 0%,#0a0f11 55%,#080c0e 100%);
+  color:var(--zen-text);
+}
+
+.appShell{
+  width:min(100%,1040px);
+  padding:0 14px 104px;
+}
+
+.topBar{
+  min-height:68px;
+  padding:14px 4px 12px;
+  background:linear-gradient(180deg,rgba(8,12,14,.985),rgba(8,12,14,.94),rgba(8,12,14,0));
+}
+
+.topBar>div:first-child{
+  display:flex;
+  align-items:baseline;
+  gap:10px;
+}
+.topBar>div:first-child>span{
+  order:2;
+  font-size:8px;
+  color:#68737a;
+}
+.topBar h1{
+  margin:0;
+  font-size:20px;
+  font-weight:780;
+  letter-spacing:.28em;
+}
+.topBar h1 em{
+  font-size:8px;
+  letter-spacing:.04em;
+  color:#7b878d;
+}
+
+.topActions select,.topActions button{
+  height:34px;
+  background:#171d20;
+  border-color:rgba(255,255,255,.07);
+  color:#cfd6da;
+}
+
+.screen{gap:14px}
+
+.card,.weeklyReviewCard,.insightCard,.statusCard,.performanceCard,.dailyScoreCard,.rideHero{
+  border:1px solid var(--zen-line);
+  background:linear-gradient(180deg,#171d20,#121719);
+  border-radius:18px;
+  box-shadow:0 16px 40px rgba(0,0,0,.2);
+}
+
+.kicker,.eyebrow,.sectionHeading small{
+  color:#88959b;
+  font-size:8px;
+  letter-spacing:.16em;
+  font-weight:850;
+}
+
+.sectionHeading h2,.performanceCard h2,.weeklyReviewTop h2,.scoreHeader h2,.rideHero h2{
+  color:#fff;
+  font-size:19px;
+  font-weight:770;
+  letter-spacing:-.035em;
+}
+
+.dailyScoreCard{
+  padding:17px 18px 15px;
+  background:
+    radial-gradient(circle at 50% 0%,rgba(47,156,244,.04),transparent 34%),
+    linear-gradient(180deg,#13191c,#0f1416);
+}
+
+.scoreHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+.scoreHeader h2{margin:2px 0 0}
+.scoreDate{
+  color:#7f8a90;
+  font-size:9px;
+  padding-top:2px;
+}
+
+.scoreTrio{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+  max-width:620px;
+  margin:16px auto 10px;
+}
+
+.scoreTrio>div{
+  display:grid;
+  justify-items:center;
+  gap:7px;
+  text-align:center;
+}
+.scoreTrio>div>small{
+  min-height:22px;
+  color:#6f7c82;
+  font-size:7px;
+  line-height:1.35;
+}
+
+.miniScore{
+  --ring:0%;
+  --ringColor:var(--zen-blue);
+  width:112px;
+  height:112px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  position:relative;
+  background:conic-gradient(var(--ringColor) var(--ring),#30373a var(--ring),#252b2e 100%);
+}
+.miniScore:before{
+  content:"";
+  position:absolute;
+  inset:8px;
+  border-radius:50%;
+  background:#111719;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.025);
+}
+.miniScore.blue{--ringColor:var(--zen-blue)}
+.miniScore.green{--ringColor:var(--zen-green)}
+.miniScore.purple{--ringColor:var(--zen-purple)}
+.miniScoreCore{
+  position:relative;
+  z-index:1;
+  display:grid;
+  justify-items:center;
+}
+.miniScoreCore b{
+  font-size:24px;
+  line-height:1;
+  letter-spacing:-.04em;
+}
+.miniScoreCore span{
+  margin-top:4px;
+  color:#7b878d;
+  font-size:6.5px;
+  letter-spacing:.14em;
+  font-weight:800;
+}
+
+.dailySignalFoot{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  margin-top:11px;
+  padding-top:10px;
+  border-top:1px solid rgba(255,255,255,.055);
+}
+.dailySignalFoot span{
+  text-align:center;
+  color:#718087;
+  font-size:8px;
+  border-left:1px solid rgba(255,255,255,.05);
+}
+.dailySignalFoot span:first-child{border-left:0}
+.dailySignalFoot b{
+  color:#dce3e6;
+  font-size:9px;
+}
+
+/* weekly review in compact mobile-app style */
+.weeklyReviewCard{
+  padding:17px;
+  background:linear-gradient(180deg,#171d20,#13181b);
+}
+.weeklyReviewTop h2{font-size:20px}
+.reviewBadge,.subtleTag{
+  color:#9ba7ad;
+  background:#1b2225;
+  border-color:rgba(255,255,255,.08);
+}
+.weeklyReviewStats{
+  margin-top:14px;
+  padding:12px 0;
+  border-color:rgba(255,255,255,.06);
+}
+.weeklyReviewStats>div{
+  border-left-color:rgba(255,255,255,.055);
+}
+.weeklyReviewStats b{font-size:21px}
+.weeklyReviewStats span{color:#737f85}
+.reviewNarrative{gap:10px}
+.reviewNarrative>div{
+  grid-template-columns:76px 1fr;
+}
+.reviewNarrative span{color:#6f7b81}
+.reviewNarrative p{
+  color:#d3d9dc;
+  font-size:9px;
+}
+
+/* recent activity list — inspired by the Today activity stack */
+.recentTrainingCard{
+  padding:16px;
+}
+.ascentList{display:grid;gap:8px}
+.ascentRow{
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  gap:10px;
+  align-items:center;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.055);
+  background:#101517;
+  border-radius:12px;
+}
+.activityTile{
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  border-radius:8px;
+  color:#fff;
+  font-size:17px;
+}
+.ascentCopy{min-width:0}
+.ascentCopy b{
+  display:block;
+  color:#f4f6f7;
+  font-size:11px;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+}
+.ascentCopy span{
+  display:block;
+  margin-top:2px;
+  color:#747f85;
+  font-size:7.5px;
+}
+.ascentScore{text-align:right}
+.ascentScore b{
+  display:block;
+  color:#61b7ff;
+  font-size:13px;
+}
+.ascentScore span{
+  display:block;
+  color:#667279;
+  font-size:6.5px;
+}
+
+/* cycling latest-activity card */
+.rideHero{
+  padding:17px;
+  background:linear-gradient(180deg,#171d21,#12171a);
+}
+.rideHeroTop{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:15px;
+}
+.rideHeroTop h2{
+  margin:3px 0 2px;
+  max-width:560px;
+}
+.rideHeroTop small{color:#6e7a80;font-size:8px}
+.rideHero .miniScore{
+  width:94px;
+  height:94px;
+  flex:0 0 auto;
+}
+.rideHero .miniScoreCore b{font-size:20px}
+
+.rideMetrics{
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:7px;
+  margin-top:14px;
+}
+.rideMetrics>div{
+  padding:10px 8px;
+  border-radius:10px;
+  background:#101517;
+  border:1px solid rgba(255,255,255,.05);
+}
+.rideMetrics span{
+  display:block;
+  color:#6e7b82;
+  font-size:6.5px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.rideMetrics b{
+  display:block;
+  margin-top:3px;
+  color:#fff;
+  font-size:12px;
+}
+
+/* Health/Fitness/Cycling surfaces */
+.insightGrid>div,.simpleMetrics>div,.performanceNumbers>div{
+  background:#111719;
+  border:1px solid rgba(255,255,255,.055);
+  border-radius:12px;
+}
+.insightGrid span,.simpleMetrics span,.performanceNumbers span{color:#748087}
+.insightGrid b{font-size:23px}
+
+.segmented{
+  background:#101416;
+  border-color:rgba(255,255,255,.065);
+}
+.segmented button{color:#737f85}
+.segmented button.active{
+  background:#243038;
+  color:#fff;
+}
+
+.spark{
+  background:#101517;
+  border-color:rgba(255,255,255,.055);
+  border-radius:12px;
+}
+.gridLine{stroke:#242c30}
+.referenceLine{stroke:#4d5a60}
+.referenceText,.axisText{fill:#647077}
+
+.statusTriplet{
+  border-color:rgba(255,255,255,.055);
+}
+.statusTriplet>div{
+  background:#111719;
+  border-color:rgba(255,255,255,.055);
+}
+.statusTriplet b{font-size:23px}
+
+.loadBars{
+  background:#101517;
+  border-color:rgba(255,255,255,.055);
+  border-radius:12px;
+}
+.loadBar{background:linear-gradient(180deg,#3daaff,#1474bc)}
+.distribution{background:#101517;border-color:rgba(255,255,255,.055)}
+
+.performanceCard{
+  background:linear-gradient(180deg,#171d20,#121719);
+}
+.performanceNumbers>div:nth-child(1){border-top:2px solid var(--zen-blue)}
+.performanceNumbers>div:nth-child(2){border-top:2px solid var(--zen-green)}
+.performanceNumbers>div:nth-child(3){border-top:2px solid var(--zen-purple)}
+.performanceNumbers>div:nth-child(4){border-top:2px solid var(--zen-orange)}
+
+.monthCard{
+  background:linear-gradient(180deg,#171d20,#121719);
+}
+.dayCell{
+  background:#101517;
+  border-color:rgba(255,255,255,.05);
+  border-radius:9px;
+}
+.todayCell{
+  border-color:var(--zen-green);
+  box-shadow:0 0 0 1px rgba(82,231,131,.12);
+}
+
+.kindCycling{background:var(--zen-blue)!important}
+.kindStrength{background:var(--zen-orange)!important}
+.kindHiit{background:var(--zen-red)!important}
+.kindRunning{background:var(--zen-green)!important}
+.kindOther{background:#9aa4a9!important}
+.kindRest{background:#4c555a!important}
+
+/* bottom nav closer to native mobile app */
+.bottomNav{
+  bottom:9px;
+  width:min(calc(100% - 18px),610px);
+  padding:5px 7px;
+  border-radius:18px;
+  border-color:rgba(255,255,255,.075);
+  background:rgba(18,23,26,.95);
+  box-shadow:0 20px 60px rgba(0,0,0,.48);
+}
+.bottomNav button{
+  color:#6f7b81;
+  padding:8px 2px 7px;
+  border-radius:12px;
+}
+.bottomNav button span{font-size:14px}
+.bottomNav button b{
+  margin-top:1px;
+  font-size:7px;
+  font-weight:700;
+}
+.bottomNav button.active{
+  background:#213c2d;
+  color:#80ec9d;
+}
+
+.chartEmpty{
+  background:#101517;
+  border-color:rgba(255,255,255,.07);
+  color:#7a858b;
+}
+
+@media(min-width:860px){
+  .zenHome{
+    grid-template-columns:1fr 1fr;
+    align-items:start;
+  }
+  .zenHome>.dailyScoreCard{grid-column:1}
+  .zenHome>.weeklyReviewCard{grid-column:2}
+  .zenHome>.recentTrainingCard{grid-column:1}
+  .zenHome>.monthCard{grid-column:2}
+}
+
+@media(max-width:720px){
+  .appShell{padding-left:8px;padding-right:8px}
+  .dailyScoreCard,.weeklyReviewCard,.card,.insightCard,.statusCard,.performanceCard,.rideHero{
+    border-radius:15px;
+  }
+  .scoreTrio{gap:5px}
+  .miniScore{width:96px;height:96px}
+  .miniScoreCore b{font-size:21px}
+  .rideMetrics{grid-template-columns:repeat(3,1fr)}
+}
+
+@media(max-width:390px){
+  .scoreTrio{grid-template-columns:repeat(3,1fr)}
+  .miniScore{width:86px;height:86px}
+  .miniScore:before{inset:7px}
+  .miniScoreCore b{font-size:18px}
+  .weeklyReviewStats b{font-size:18px}
+  .rideHeroTop{display:grid}
+  .rideHero .miniScore{width:86px;height:86px}
+}

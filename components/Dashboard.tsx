@@ -22,7 +22,7 @@ type CyclingMetric = "efficiency" | "decoupling" | "avgPower" | "np";
 const tabs: Array<{ key: Tab; label: string; icon: string }> = [
   { key: "Today", label: "Today", icon: "◉" },
   { key: "Health", label: "Health", icon: "♥" },
-  { key: "Training", label: "Training", icon: "↗" },
+  { key: "Training", label: "Fitness", icon: "↗" },
   { key: "Cycling", label: "Cycling", icon: "◌" },
   { key: "Plan", label: "Plan", icon: "▦" }
 ];
@@ -255,42 +255,275 @@ function RecoveryHero({
   );
 }
 
-function TodayAction({ planned }: { planned: PlannedEvent[] }) {
-  const today = localIso();
-  const todayEvents = planned.filter(p => dateOnly(p.start) === today);
 
-  if (!todayEvents.length) {
-    return (
-      <section className="actionCard">
+function RingScore({
+  value,
+  label,
+  tone,
+  suffix = "%"
+}: {
+  value: number | null;
+  label: string;
+  tone: "blue" | "green" | "purple";
+  suffix?: string;
+}) {
+  const visual = value == null ? 0 : clamp(value, 0, 100);
+  const style = { "--ring": `${visual}%` } as CSSProperties;
+
+  return (
+    <div className={`miniScore ${tone}`} style={style}>
+      <div className="miniScoreCore">
+        <b>{value == null ? "—" : Math.round(value)}{value == null ? "" : suffix}</b>
+        <span>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function DailyScores({
+  data,
+  recovery
+}: {
+  data: DashboardData;
+  recovery: RecoveryPoint | null;
+}) {
+  const load = loadBalance(data.aggregates.load7d, data.aggregates.load28d);
+  const loadPct = load.ratio == null ? null : load.ratio * 100;
+  const sleep = typeof data.current.sleepScore === "number" ? data.current.sleepScore : null;
+
+  return (
+    <section className="dailyScoreCard">
+      <div className="scoreHeader">
         <div>
-          <span className="kicker">What next?</span>
-          <h2>No planned session</h2>
-          <p>No workout is returned for today. That is not automatically a rest prescription.</p>
+          <span className="kicker">TODAY</span>
+          <h2>Daily signals</h2>
         </div>
-        <span className="actionBadge neutralBadge">Open day</span>
+        <span className="scoreDate">
+          {new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(new Date())}
+        </span>
+      </div>
+
+      <div className="scoreTrio">
+        <div>
+          <RingScore value={loadPct} label="LOAD" tone="blue" />
+          <small>{load.label}</small>
+        </div>
+        <div>
+          <RingScore value={recovery?.score ?? null} label="RECOVERY" tone="green" suffix="" />
+          <small>{recoveryLabel(recovery?.score ?? null, recovery?.coverage ?? 0)}</small>
+        </div>
+        <div>
+          <RingScore value={sleep} label="SLEEP" tone="purple" suffix="" />
+          <small>{typeof data.current.sleepHours === "number" ? `${data.current.sleepHours.toFixed(1)} h` : "No sleep data"}</small>
+        </div>
+      </div>
+
+      <div className="dailySignalFoot">
+        <span>HRV <b>{fmt(data.current.hrv)} ms</b></span>
+        <span>RHR <b>{fmt(data.current.restingHr)} bpm</b></span>
+        <span>Form <b>{fmt(data.current.form, 1)}</b></span>
+      </div>
+    </section>
+  );
+}
+
+function RecentTrainingCard({ activities }: { activities: Activity[] }) {
+  const latest = activities.slice(0, 3);
+
+  return (
+    <section className="card recentTrainingCard">
+      <SectionHeading eyebrow="RECENT" title="Training" />
+      <div className="ascentList">
+        {latest.length ? latest.map((a, idx) => {
+          const kind = workoutKind(a.sport, a.name);
+          const intensity =
+            typeof a.intensityFactor === "number"
+              ? Math.round(a.intensityFactor * 100)
+              : typeof a.load === "number"
+                ? Math.min(100, Math.round(a.load))
+                : null;
+
+          return (
+            <div className="ascentRow" key={`${a.id}-${a.date}`}>
+              <div className={`activityTile ${kindMeta[kind].className}`}>
+                <span>{kind === "cycling" ? "◌" : kind === "strength" ? "▥" : kind === "hiit" ? "↗" : "•"}</span>
+              </div>
+              <div className="ascentCopy">
+                <b>{a.name}</b>
+                <span>{dateOnly(a.date)} · {duration(a.movingTimeSec)}{typeof a.avgHr === "number" ? ` · ${fmt(a.avgHr)} bpm` : ""}</span>
+              </div>
+              <div className="ascentScore">
+                <b>{intensity == null ? "—" : `${intensity}%`}</b>
+                <span>{idx === 0 ? "latest" : "effort"}</span>
+              </div>
+            </div>
+          );
+        }) : <div className="emptyState">No recent activities returned.</div>}
+      </div>
+    </section>
+  );
+}
+
+function LatestRideHero({ ride }: { ride: Activity | null }) {
+  if (!ride) {
+    return (
+      <section className="rideHero">
+        <span className="kicker">CYCLING</span>
+        <h2>No recent ride</h2>
+        <p>No cycling activity was returned for the selected period.</p>
       </section>
     );
   }
 
-  const main = todayEvents[0];
-  const kind = eventKind(main);
+  const effort =
+    typeof ride.intensityFactor === "number"
+      ? Math.round(ride.intensityFactor * 100)
+      : null;
 
   return (
-    <section className="actionCard">
-      <div>
-        <span className="kicker">What next?</span>
-        <div className="actionTitle">
-          <i className={`workoutDot ${kindMeta[kind].className}`} />
-          <h2>{main.name}</h2>
+    <section className="rideHero">
+      <div className="rideHeroTop">
+        <div>
+          <span className="kicker">LATEST RIDE</span>
+          <h2>{ride.name}</h2>
+          <small>{dateOnly(ride.date)}</small>
         </div>
-        <p>
-          {main.type || kindMeta[kind].label}
-          {main.movingTimeSec ? ` · ${duration(main.movingTimeSec)}` : ""}
-          {typeof main.load === "number" ? ` · load ${Math.round(main.load)}` : ""}
-        </p>
-        {main.description && <small>{main.description.split("\n")[0]}</small>}
+        <RingScore value={effort} label="EFFORT" tone="blue" />
       </div>
-      <span className="actionBadge">Planned</span>
+
+      <div className="rideMetrics">
+        <div><span>Time</span><b>{duration(ride.movingTimeSec)}</b></div>
+        <div><span>Distance</span><b>{distance(ride.distanceM)}</b></div>
+        <div><span>Avg HR</span><b>{fmt(ride.avgHr)} bpm</b></div>
+        <div><span>Avg power</span><b>{fmt(ride.avgPower)} W</b></div>
+        <div><span>NP</span><b>{fmt(ride.normalizedPower)} W</b></div>
+        <div><span>Cadence</span><b>{fmt(ride.cadence)} rpm</b></div>
+      </div>
+    </section>
+  );
+}
+
+function startOfIsoWeek(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay() || 7;
+  d.setDate(d.getDate() - day + 1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function WeeklyReview({ data }: { data: DashboardData }) {
+  const thisMonday = startOfIsoWeek(new Date());
+  const lastMonday = new Date(thisMonday);
+  lastMonday.setDate(thisMonday.getDate() - 7);
+  const lastSundayEnd = new Date(thisMonday);
+
+  const week = data.activities.filter(a => {
+    const d = new Date(a.date);
+    return d >= lastMonday && d < lastSundayEnd;
+  });
+
+  const previousMonday = new Date(lastMonday);
+  previousMonday.setDate(lastMonday.getDate() - 7);
+  const previous = data.activities.filter(a => {
+    const d = new Date(a.date);
+    return d >= previousMonday && d < lastMonday;
+  });
+
+  const weekLoad = week.reduce((sum, a) => sum + (a.load || 0), 0);
+  const previousLoad = previous.reduce((sum, a) => sum + (a.load || 0), 0);
+  const weekSec = week.reduce((sum, a) => sum + (a.movingTimeSec || 0), 0);
+
+  const rides = week.filter(a => workoutKind(a.sport, a.name) === "cycling");
+  const strength = week.filter(a => workoutKind(a.sport, a.name) === "strength");
+  const hiit = week.filter(a => workoutKind(a.sport, a.name) === "hiit");
+
+  const longestRide = [...rides]
+    .sort((a, b) => (b.movingTimeSec || 0) - (a.movingTimeSec || 0))[0];
+
+  const strongestRide = [...rides]
+    .filter(a => typeof a.normalizedPower === "number" || typeof a.avgPower === "number")
+    .sort((a, b) =>
+      ((b.normalizedPower ?? b.avgPower ?? 0) - (a.normalizedPower ?? a.avgPower ?? 0))
+    )[0];
+
+  const change =
+    previousLoad > 0 ? Math.round(((weekLoad - previousLoad) / previousLoad) * 100) : null;
+
+  const mainSignal =
+    rides.length === 0 && (strength.length + hiit.length) >= 3
+      ? "Strength-heavy week; cycling frequency was the main thing missing."
+      : longestRide && (longestRide.movingTimeSec || 0) >= 90 * 60
+        ? `Long-endurance work anchored the week with ${duration(longestRide.movingTimeSec)} on the bike.`
+        : rides.length >= 3
+          ? "Good cycling frequency with repeated aerobic exposure."
+          : week.length
+            ? "Training stayed consistent, but the week was relatively light on bike volume."
+            : "No completed training was returned for the previous week.";
+
+  const goalLink =
+    rides.length === 0
+      ? "For Vätternrundan, the priority is simply to re-establish regular saddle time—no catch-up debt."
+      : longestRide && (longestRide.movingTimeSec || 0) >= 90 * 60
+        ? "Useful for the Vätternrundan goal: duration and repeatability matter more than chasing one big session."
+        : "The next useful step is another controlled bike exposure while preserving the weekly long-endurance anchor.";
+
+  const response =
+    strongestRide
+      ? `${strongestRide.name}: ${fmt(strongestRide.normalizedPower ?? strongestRide.avgPower)} W ${strongestRide.normalizedPower ? "NP" : "avg"}${typeof strongestRide.avgHr === "number" ? ` at ${fmt(strongestRide.avgHr)} bpm` : ""}.`
+      : `${rides.length} ride${rides.length === 1 ? "" : "s"}, ${strength.length} strength and ${hiit.length} HIIT session${hiit.length === 1 ? "" : "s"}.`;
+
+  const risk =
+    rides.length === 0
+      ? "Risk: strength/HIIT can crowd out the aerobic work if that pattern continues."
+      : rides.length >= 4 && (strength.length + hiit.length) >= 3
+        ? "Risk: density is high; protect recovery before adding more intensity."
+        : "No major pattern-level concern from the week alone.";
+
+  const mondayLabel = lastMonday.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const sunday = new Date(thisMonday);
+  sunday.setDate(thisMonday.getDate() - 1);
+  const sundayLabel = sunday.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+
+  return (
+    <section className="weeklyReviewCard">
+      <div className="weeklyReviewTop">
+        <div>
+          <span className="kicker">WEEKLY REVIEW</span>
+          <h2>{mondayLabel}–{sundayLabel}</h2>
+        </div>
+        <span className="reviewBadge">Previous week</span>
+      </div>
+
+      <div className="weeklyReviewStats">
+        <div><b>{(weekSec / 3600).toFixed(1)}h</b><span>training</span></div>
+        <div><b>{Math.round(weekLoad)}</b><span>load</span></div>
+        <div><b>{week.length}</b><span>sessions</span></div>
+        <div><b>{rides.length}</b><span>rides</span></div>
+      </div>
+
+      <div className="reviewNarrative">
+        <div>
+          <span>Main signal</span>
+          <p>{mainSignal}</p>
+        </div>
+        <div>
+          <span>Response</span>
+          <p>{response}</p>
+        </div>
+        <div>
+          <span>Goal link</span>
+          <p>{goalLink}</p>
+        </div>
+        <div>
+          <span>Watch</span>
+          <p>{risk}</p>
+        </div>
+      </div>
+
+      <div className="reviewFooter">
+        <span>Load vs prior week</span>
+        <b>{change === null ? "No comparison" : `${change > 0 ? "+" : ""}${change}%`}</b>
+      </div>
     </section>
   );
 }
@@ -869,7 +1102,7 @@ export default function Dashboard() {
       <header className="topBar">
         <div>
           <span>{pageDate}</span>
-          <h1>STAS <em>9.2</em></h1>
+          <h1>STAS <em>9.4</em></h1>
         </div>
         <div className="topActions">
           <select value={days} onChange={(e: { target: { value: string } }) => setDays(Number(e.target.value))}>
@@ -883,17 +1116,12 @@ export default function Dashboard() {
       </header>
 
       {tab === "Today" && (
-        <section className="screen homeScreen">
-          <RecoveryHero
-            data={data}
-            series={recoverySeries}
-            selectedDate={selectedRecoveryDate}
-            setSelectedDate={setSelectedRecoveryDate}
-          />
+        <section className="screen homeScreen zenHome">
+          <DailyScores data={data} recovery={currentPoint} />
 
-          <TodayAction planned={upcoming} />
+          <WeeklyReview data={data} />
 
-          <WeekSnapshot data={data} />
+          <RecentTrainingCard activities={data.activities} />
 
           <MonthCard
             activities={data.activities}
@@ -908,7 +1136,7 @@ export default function Dashboard() {
       {tab === "Health" && (
         <section className="screen">
           <section className="insightCard">
-            <SectionHeading eyebrow="HEALTH INTELLIGENCE" title="Signals, not noise" />
+            <SectionHeading eyebrow="HEALTH INTELLIGENCE" title="Recovery & trends" />
             <div className="insightGrid">
               <div>
                 <span>Recovery</span>
@@ -994,6 +1222,8 @@ export default function Dashboard() {
 
       {tab === "Cycling" && (
         <section className="screen">
+          <LatestRideHero ride={rides[0] || null} />
+
           <section className="performanceCard">
             <div>
               <span className="kicker">CYCLING</span>

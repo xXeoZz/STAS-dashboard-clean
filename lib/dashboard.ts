@@ -6,7 +6,6 @@ import {
   fetchIntervalsEvents,
   fetchIntervalsWellness
 } from "@/lib/providers/intervals";
-import { fetchOptionalGarminNormalized, mergeWellness } from "@/lib/providers/garmin";
 import { fetchStasContext } from "@/lib/providers/stas";
 import { fetchWithingsWellness } from "@/lib/providers/withings";
 
@@ -121,7 +120,6 @@ export async function buildDashboard(days = 90): Promise<DashboardData> {
     activitiesResult,
     eventsResult,
     stasResult,
-    garminResult,
     withingsResult
   ] = await Promise.allSettled([
     fetchIntervalsAthlete(),
@@ -129,7 +127,6 @@ export async function buildDashboard(days = 90): Promise<DashboardData> {
     fetchIntervalsActivities(oldest, newest),
     fetchIntervalsEvents(oldest, isoDate(new Date(Date.now() + 31 * 86400000))),
     fetchStasContext(),
-    fetchOptionalGarminNormalized(),
     fetchWithingsWellness(oldest, today)
   ]);
 
@@ -159,11 +156,6 @@ export async function buildDashboard(days = 90): Promise<DashboardData> {
     ? stasResult.value
     : { data: null, source: "unavailable" as const };
 
-  const garmin = garminResult.status === "fulfilled" ? garminResult.value : null;
-  if (garminResult.status === "rejected") {
-    sourceNotes.push(garminResult.reason instanceof Error ? garminResult.reason.message : "Optional Garmin provider unavailable.");
-  }
-
   const withings = withingsResult.status === "fulfilled"
     ? withingsResult.value
     : { status: "error" as const, wellness: [], error: "Withings unavailable." };
@@ -171,7 +163,7 @@ export async function buildDashboard(days = 90): Promise<DashboardData> {
   if (withings.error) sourceNotes.push(withings.error);
 
   const wellness = mergeWithings(
-    mergeWellness(intervalsWellness, garmin?.wellness || []),
+    intervalsWellness,
     withings.wellness || []
   ).filter(w => w.date <= today);
 
@@ -224,7 +216,6 @@ export async function buildDashboard(days = 90): Promise<DashboardData> {
         wellnessResult.status === "fulfilled" ||
         eventsResult.status === "fulfilled",
       stasContext: stasBundle.source,
-      garminDirect: !!garmin,
       withings: withings.status,
       notes: sourceNotes
     },
