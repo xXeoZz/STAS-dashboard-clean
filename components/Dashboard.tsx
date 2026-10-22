@@ -304,9 +304,12 @@ function DailyScores({
       </div>
 
       <div className="scoreTrio">
-        <div>
-          <RingScore value={loadPct} label="LOAD" tone="blue" />
-          <small>{load.label}</small>
+        <div className="loadScoreBlock">
+          <div className="loadNumberCard">
+            <b>{Math.round(data.aggregates.load7d)}</b>
+            <span>7D LOAD</span>
+          </div>
+          <small>{loadPct == null ? load.label : `${Math.round(loadPct)}% of recent weekly average`}</small>
         </div>
         <div>
           <RingScore value={recovery?.score ?? null} label="RECOVERY" tone="green" suffix="" />
@@ -338,10 +341,8 @@ function RecentTrainingCard({ activities }: { activities: Activity[] }) {
           const kind = workoutKind(a.sport, a.name);
           const intensity =
             typeof a.intensityFactor === "number"
-              ? Math.round(a.intensityFactor * 100)
-              : typeof a.load === "number"
-                ? Math.min(100, Math.round(a.load))
-                : null;
+              ? Math.round(a.intensityFactor > 2 ? a.intensityFactor : a.intensityFactor * 100)
+              : null;
 
           return (
             <div className="ascentRow" key={`${a.id}-${a.date}`}>
@@ -354,7 +355,7 @@ function RecentTrainingCard({ activities }: { activities: Activity[] }) {
               </div>
               <div className="ascentScore">
                 <b>{intensity == null ? "—" : `${intensity}%`}</b>
-                <span>{idx === 0 ? "latest" : "effort"}</span>
+                <span>{intensity == null ? "no IF" : "intensity"}</span>
               </div>
             </div>
           );
@@ -1102,7 +1103,7 @@ export default function Dashboard() {
       <header className="topBar">
         <div>
           <span>{pageDate}</span>
-          <h1>STAS <em>9.4</em></h1>
+          <h1>STAS <em>9.4.1</em></h1>
         </div>
         <div className="topActions">
           <select value={days} onChange={(e: { target: { value: string } }) => setDays(Number(e.target.value))}>
