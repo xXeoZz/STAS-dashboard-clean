@@ -14,6 +14,11 @@ type WithingsResult = {
   status: WithingsStatus;
   wellness: WellnessDay[];
   error?: string;
+  meta?: {
+    pagesFetched: number;
+    groupsFetched: number;
+    newestMeasurementAt: string | null;
+  };
 };
 
 const TOKEN_COOKIE = "stas_withings_token";
@@ -199,7 +204,7 @@ function groupToWellness(group: Record<string, unknown>): WellnessDay | null {
 
   const row: WellnessDay = {
     date: localDateFromUnix(ts),
-    raw: { withings: group },
+    raw: { withingsGroups: [group], withingsLatestTimestamp: ts },
     source: "Withings"
   };
 
@@ -229,6 +234,42 @@ function groupToWellness(group: Record<string, unknown>): WellnessDay | null {
   return hasValue ? row : null;
 }
 
+function mergeSameDayWithings(
+  current: { ts: number; row: WellnessDay } | undefined,
+  incoming: { ts: number; row: WellnessDay }
+) {
+  if (!current) return incoming;
+
+  const older = current.ts <= incoming.ts ? current : incoming;
+  const newer = current.ts <= incoming.ts ? incoming : current;
+
+  const olderGroups = Array.isArray(older.row.raw?.withingsGroups)
+    ? older.row.raw!.withingsGroups as unknown[]
+    : [];
+  const newerGroups = Array.isArray(newer.row.raw?.withingsGroups)
+    ? newer.row.raw!.withingsGroups as unknown[]
+    : [];
+
+  const merged: WellnessDay = {
+    ...older.row,
+    ...newer.row,
+    date: newer.row.date,
+    ...(newer.row.weightKg != null ? { weightKg: newer.row.weightKg } : older.row.weightKg != null ? { weightKg: older.row.weightKg } : {}),
+    ...(newer.row.bodyFatPct != null ? { bodyFatPct: newer.row.bodyFatPct } : older.row.bodyFatPct != null ? { bodyFatPct: older.row.bodyFatPct } : {}),
+    ...(newer.row.fatMassKg != null ? { fatMassKg: newer.row.fatMassKg } : older.row.fatMassKg != null ? { fatMassKg: older.row.fatMassKg } : {}),
+    ...(newer.row.muscleMassKg != null ? { muscleMassKg: newer.row.muscleMassKg } : older.row.muscleMassKg != null ? { muscleMassKg: older.row.muscleMassKg } : {}),
+    ...(newer.row.boneMassKg != null ? { boneMassKg: newer.row.boneMassKg } : older.row.boneMassKg != null ? { boneMassKg: older.row.boneMassKg } : {}),
+    ...(newer.row.hydrationKg != null ? { hydrationKg: newer.row.hydrationKg } : older.row.hydrationKg != null ? { hydrationKg: older.row.hydrationKg } : {}),
+    raw: {
+      withingsGroups: [...olderGroups, ...newerGroups],
+      withingsLatestTimestamp: Math.max(current.ts, incoming.ts)
+    },
+    source: "Withings"
+  };
+
+  return { ts: Math.max(current.ts, incoming.ts), row: merged };
+}
+
 export async function fetchWithingsWellness(oldest: string, newest: string): Promise<WithingsResult> {
   if (!configured()) return { status: "not_configured", wellness: [] };
 
@@ -240,48 +281,85 @@ export async function fetchWithingsWellness(oldest: string, newest: string): Pro
   const base = process.env.WITHINGS_API_BASE || DEFAULT_API_BASE;
 
   try {
-    const params = new URLSearchParams({
-      action: "getmeas",
-      startdate: String(start),
-      enddate: String(end)
-    });
+    const allGroups: Record<string, unknown>[] = [];
+    let offset: number | null = null;
+    let pagesFetched = 0;
 
-    const res = await fetch(`${base}/measure?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-      cache: "no-store"
-    });
+    // Withings paginates getmeas responses using body.more + body.offset.
+    // Keep a hard page ceiling to avoid an accidental infinite loop if the API misbehaves.
+    for (let page = 0; page < 20; page++) {
+      const params = new URLSearchParams({
+        action: "getmeas",
+        startdate: String(start),
+        enddate: String(end)
+      });
+      if (offset !== null) params.set("offset", String(offset));
 
-    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-    const status = typeof data.status === "number" ? data.status : null;
+      const res = await fetch(`${base}/measure?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        cache: "no-store"
+      });
 
-    if (!res.ok || (status !== null && status !== 0)) {
-      return {
-        status: "error",
-        wellness: [],
-        error: `Withings measurements failed (${status ?? res.status})`
-      };
+      const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+      const status = typeof data.status === "number" ? data.status : null;
+
+      if (!res.ok || (status !== null && status !== 0)) {
+        return {
+          status: "error",
+          wellness: [],
+          error: `Withings measurements failed (${status ?? res.status})`
+        };
+      }
+
+      const body = data.body && typeof data.body === "object"
+        ? data.body as Record<string, unknown>
+        : {};
+
+      const groups = Array.isArray(body.measuregrps)
+        ? body.measuregrps.filter((x): x is Record<string, unknown> =>
+            Boolean(x && typeof x === "object" && !Array.isArray(x))
+          )
+        : [];
+
+      allGroups.push(...groups);
+      pagesFetched += 1;
+
+      const more =
+        body.more === true ||
+        body.more === 1 ||
+        body.more === "1";
+
+      const nextOffsetRaw = Number(body.offset);
+      const nextOffset = Number.isFinite(nextOffsetRaw) ? nextOffsetRaw : null;
+
+      if (!more || nextOffset === null || nextOffset === offset) break;
+      offset = nextOffset;
     }
 
-    const body = data.body && typeof data.body === "object"
-      ? data.body as Record<string, unknown>
-      : {};
-    const groups = Array.isArray(body.measuregrps) ? body.measuregrps : [];
     const byDate = new Map<string, { ts: number; row: WellnessDay }>();
+    let newestTs = 0;
 
-    for (const rawGroup of groups) {
-      if (!rawGroup || typeof rawGroup !== "object") continue;
-      const group = rawGroup as Record<string, unknown>;
+    for (const group of allGroups) {
       const row = groupToWellness(group);
       if (!row) continue;
 
       const ts = Number(group.date) || 0;
-      const prev = byDate.get(row.date);
-      if (!prev || ts >= prev.ts) byDate.set(row.date, { ts, row });
+      newestTs = Math.max(newestTs, ts);
+
+      const current = byDate.get(row.date);
+      byDate.set(row.date, mergeSameDayWithings(current, { ts, row }));
     }
 
     return {
       status: "connected",
-      wellness: [...byDate.values()].map(x => x.row).sort((a, b) => a.date.localeCompare(b.date))
+      wellness: [...byDate.values()]
+        .map(x => x.row)
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      meta: {
+        pagesFetched,
+        groupsFetched: allGroups.length,
+        newestMeasurementAt: newestTs > 0 ? new Date(newestTs * 1000).toISOString() : null
+      }
     };
   } catch (e) {
     return {
@@ -291,3 +369,4 @@ export async function fetchWithingsWellness(oldest: string, newest: string): Pro
     };
   }
 }
+

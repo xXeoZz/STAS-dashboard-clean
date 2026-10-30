@@ -40,7 +40,10 @@ export async function GET(req: NextRequest) {
     firstDate: rows[0]?.date || null,
     lastDate: rows.at(-1)?.date || null,
     latestWeightDate: weightRows.at(-1)?.date || null,
-    latestWeightMapped: weightRows.length > 0
+    latestWeightMapped: weightRows.length > 0,
+    pagesFetched: result.meta?.pagesFetched ?? null,
+    groupsFetched: result.meta?.groupsFetched ?? null,
+    newestMeasurementAt: result.meta?.newestMeasurementAt ?? null
   }, {
     headers: { "Cache-Control": "no-store" }
   });
